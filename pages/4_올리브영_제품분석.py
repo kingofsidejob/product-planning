@@ -1038,7 +1038,7 @@ def main():
     # ===== 바이럴 아이템 탭 =====
     with tab_viral:
         st.subheader("🔥 바이럴 아이템 랭킹")
-        st.caption("SNS/바이럴 채널에서 언급된 제품을 언급 횟수 순으로 정렬합니다.")
+        st.caption("SNS/바이럴 채널에서 언급된 제품을 바이럴 비율(%) 순으로 정렬합니다.")
 
         # DB에서 바이럴 키워드 카운트가 있는 제품 조회
         viral_products = []
@@ -1055,13 +1055,16 @@ def main():
                         counts = json_lib.loads(row['viral_keyword_counts']) if row['viral_keyword_counts'] else {}
                         if counts:
                             total_viral = sum(counts.values())
+                            total_reviews = row['total_reviews'] or 1  # 0 나누기 방지
+                            viral_ratio = (total_viral / total_reviews) * 100
                             viral_products.append({
                                 'product_code': row['product_code'],
                                 'brand': row['brand'],
                                 'name': row['name'],
-                                'total_reviews': row['total_reviews'],
+                                'total_reviews': total_reviews,
                                 'viral_counts': counts,
                                 'total_viral': total_viral,
+                                'viral_ratio': viral_ratio,
                                 'analyzed_at': row['analyzed_at']
                             })
                     except:
@@ -1069,8 +1072,8 @@ def main():
         except Exception as e:
             st.error(f"데이터 조회 오류: {e}")
 
-        # 총 바이럴 언급 수로 정렬
-        viral_products.sort(key=lambda x: x['total_viral'], reverse=True)
+        # 바이럴 비율(%)로 정렬 (높은 순)
+        viral_products.sort(key=lambda x: x['viral_ratio'], reverse=True)
 
         if viral_products:
             st.success(f"🎯 바이럴 언급이 있는 제품: **{len(viral_products)}개**")
@@ -1089,9 +1092,9 @@ def main():
                         st.caption(f"📊 리뷰 {product['total_reviews']}개 · 📅 {analyzed_date} · `{product['product_code']}`")
 
                     with col_viral:
-                        # 바이럴 키워드별 언급 횟수
+                        # 바이럴 비율 및 상세 정보
                         counts_str = ', '.join([f"**{kw}** {cnt}회" for kw, cnt in sorted(product['viral_counts'].items(), key=lambda x: -x[1])])
-                        st.info(f"📢 총 **{product['total_viral']}회** 언급\n\n{counts_str}")
+                        st.info(f"📢 총 **{product['total_viral']}회** 언급 (**{product['viral_ratio']:.1f}%**)\n\n리뷰 {product['total_reviews']:,}개 중 {product['total_viral']}개\n\n{counts_str}")
 
             if len(viral_products) > 100:
                 st.caption(f"상위 100개만 표시 (전체 {len(viral_products)}개)")

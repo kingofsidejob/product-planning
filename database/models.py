@@ -145,6 +145,55 @@ CREATE TABLE IF NOT EXISTS review_analysis (
     analyzed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 발굴된 과거 히트상품 테이블
+CREATE TABLE IF NOT EXISTS discovered_hit_products (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    -- 기본 정보
+    brand TEXT NOT NULL,
+    name TEXT NOT NULL,
+    category TEXT,
+
+    -- 발굴 정보
+    discovery_source TEXT,
+    discovery_keyword TEXT,
+    original_year INTEGER,
+    source_url TEXT,
+
+    -- 단종 판별
+    discontinuation_status TEXT DEFAULT 'pending',
+    oliveyoung_checked_at TIMESTAMP,
+    brand_mall_checked_at TIMESTAMP,
+
+    -- 리뷰 분석
+    review_count INTEGER DEFAULT 0,
+    review_samples TEXT,
+    positive_ratio REAL,
+    strengths TEXT,
+    weaknesses TEXT,
+
+    -- 단종 이유 및 마케팅
+    inferred_discontinuation_reasons TEXT,
+    marketing_points TEXT,
+    revival_potential INTEGER DEFAULT 3,
+
+    -- 메타
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    UNIQUE(brand, name)
+);
+
+-- 발굴 히스토리 테이블
+CREATE TABLE IF NOT EXISTS discovery_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    discovery_source TEXT NOT NULL,
+    products_found INTEGER DEFAULT 0,
+    discontinued_count INTEGER DEFAULT 0,
+    discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 

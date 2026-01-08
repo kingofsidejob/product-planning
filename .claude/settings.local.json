@@ -14,7 +14,17 @@
       "Bash(timeout /t 5 /nobreak)",
       "Bash(dir /b /o-d)",
       "Bash(git rev-parse:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\n올리브영 제품분석 대분류/소분류 2단계 카테고리 필터 추가\n\n- 수집된 제품 탭: 대분류/소분류 필터 추가\n- 신규 진입 탭: 대분류/소분류 필터 추가\n- 리뷰 분석 탭: 대분류/소분류 필터 추가\n- 대분류 선택 시 해당 대분류의 소분류만 동적으로 표시\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)",
+      "Bash(git push)",
+      "Bash(PYTHONIOENCODING=utf-8 python3:*)",
+      "Bash(timeout /t 30 /nobreak)",
+      "Bash(set:*)",
+      "Bash(git commit:*)",
+      "Bash(netstat:*)",
+      "Bash(sqlite3:*)"
     ]
   }
 }
