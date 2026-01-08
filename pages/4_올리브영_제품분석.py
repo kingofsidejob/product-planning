@@ -481,17 +481,39 @@ def main():
     with tab_products:
         st.subheader("수집된 올리브영 제품")
 
-        col1, col2 = st.columns([1, 2])
+        col1, col2 = st.columns([1, 1])
         with col1:
-            filter_category = st.selectbox(
-                "카테고리 필터",
-                options=["전체"] + CATEGORIES,
-                key="products_filter"
+            products_filter_group = st.selectbox(
+                "대분류",
+                options=["전체"] + list(CATEGORY_GROUPS.keys()),
+                key="products_filter_group"
             )
 
-        products = db.get_oliveyoung_products(
-            category=filter_category if filter_category != "전체" else None
-        )
+        with col2:
+            # 대분류 선택에 따라 소분류 옵션 변경
+            if products_filter_group == "전체":
+                products_category_options = ["전체"] + CATEGORIES
+            else:
+                products_category_options = ["전체"] + CATEGORY_GROUPS[products_filter_group]
+
+            products_filter_category = st.selectbox(
+                "소분류",
+                options=products_category_options,
+                key="products_filter_category"
+            )
+
+        # 대분류/소분류 필터 적용
+        if products_filter_category != "전체":
+            # 소분류가 선택된 경우
+            products = db.get_oliveyoung_products(category=products_filter_category)
+        elif products_filter_group != "전체":
+            # 대분류만 선택된 경우 - 해당 대분류의 모든 소분류 상품 조회
+            group_categories = CATEGORY_GROUPS[products_filter_group]
+            all_products = db.get_oliveyoung_products(category=None)
+            products = [p for p in all_products if p.get('category') in group_categories]
+        else:
+            # 전체 선택
+            products = db.get_oliveyoung_products(category=None)
 
         if products:
             st.markdown(f"**총 {len(products)}개 제품**")
@@ -520,7 +542,37 @@ def main():
         st.subheader("🆕 신규 진입 제품")
         st.caption("최근 7일 내 베스트 100에 새로 진입한 제품입니다.")
 
-        new_products = db.get_new_oliveyoung_entries()
+        # 대분류/소분류 필터
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            new_filter_group = st.selectbox(
+                "대분류",
+                options=["전체"] + list(CATEGORY_GROUPS.keys()),
+                key="new_filter_group"
+            )
+
+        with col2:
+            if new_filter_group == "전체":
+                new_category_options = ["전체"] + CATEGORIES
+            else:
+                new_category_options = ["전체"] + CATEGORY_GROUPS[new_filter_group]
+
+            new_filter_category = st.selectbox(
+                "소분류",
+                options=new_category_options,
+                key="new_filter_category"
+            )
+
+        # 신규 진입 상품 조회 및 필터 적용
+        all_new_products = db.get_new_oliveyoung_entries()
+
+        if new_filter_category != "전체":
+            new_products = [p for p in all_new_products if p.get('category') == new_filter_category]
+        elif new_filter_group != "전체":
+            group_categories = CATEGORY_GROUPS[new_filter_group]
+            new_products = [p for p in all_new_products if p.get('category') in group_categories]
+        else:
+            new_products = all_new_products
 
         if new_products:
             st.success(f"🎉 {len(new_products)}개의 신규 진입 제품 발견!")
@@ -570,13 +622,26 @@ def main():
                 st.session_state.batch_crawling = False
 
             # 설정
-            col_filter, col_setting = st.columns([2, 1])
+            col_group, col_category, col_setting = st.columns([1, 1, 1])
 
-            with col_filter:
+            with col_group:
+                review_filter_group = st.selectbox(
+                    "대분류",
+                    options=["전체"] + list(CATEGORY_GROUPS.keys()),
+                    key="review_filter_group"
+                )
+
+            with col_category:
+                # 대분류 선택에 따라 소분류 옵션 변경
+                if review_filter_group == "전체":
+                    category_options = ["전체"] + CATEGORIES
+                else:
+                    category_options = ["전체"] + CATEGORY_GROUPS[review_filter_group]
+
                 review_filter_category = st.selectbox(
-                    "카테고리 필터",
-                    options=["전체"] + CATEGORIES,
-                    key="review_filter"
+                    "소분류",
+                    options=category_options,
+                    key="review_filter_category"
                 )
 
             with col_setting:
@@ -612,10 +677,18 @@ def main():
 
             st.divider()
 
-            # 수집된 상품 목록
-            review_products = db.get_oliveyoung_products(
-                category=review_filter_category if review_filter_category != "전체" else None
-            )
+            # 수집된 상품 목록 - 대분류/소분류 필터 적용
+            if review_filter_category != "전체":
+                # 소분류가 선택된 경우
+                review_products = db.get_oliveyoung_products(category=review_filter_category)
+            elif review_filter_group != "전체":
+                # 대분류만 선택된 경우 - 해당 대분류의 모든 소분류 상품 조회
+                group_categories = CATEGORY_GROUPS[review_filter_group]
+                all_products = db.get_oliveyoung_products(category=None)
+                review_products = [p for p in all_products if p.get('category') in group_categories]
+            else:
+                # 전체 선택
+                review_products = db.get_oliveyoung_products(category=None)
 
             # 분석 완료된 상품 코드 및 날짜 목록
             analyzed_codes = db.get_analyzed_product_codes()
