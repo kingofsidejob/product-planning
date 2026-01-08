@@ -789,6 +789,67 @@ def quick_marketing_analysis(reviews: List[Dict], product_name: str = '', brand:
     }
 
 
+def extract_usp_from_reviews(reviews: List[Dict]) -> List[Dict]:
+    """
+    리뷰에서 USP(Unique Selling Point) 후보 추출
+
+    Args:
+        reviews: 리뷰 딕셔너리 리스트 [{'content': str, ...}, ...]
+
+    Returns:
+        USP 후보 리스트 [{'sentence': str, 'category': str, 'trigger_words': List[str]}, ...]
+    """
+    try:
+        from modules.usp_dictionary import get_usp_dictionary
+        usp_dict = get_usp_dictionary()
+    except ImportError:
+        # 사전 모듈이 없으면 빈 리스트 반환
+        return []
+
+    # 리뷰 텍스트만 추출
+    review_texts = [r.get('content', '') for r in reviews if r.get('content')]
+
+    # USP 후보 추출
+    candidates = usp_dict.extract_usp_candidates(review_texts)
+
+    # 딕셔너리 형태로 변환
+    result = []
+    for candidate in candidates:
+        result.append({
+            'sentence': candidate.sentence,
+            'category': candidate.category,
+            'trigger_words': candidate.trigger_words
+        })
+
+    return result
+
+
+def get_usp_summary(usp_candidates: List[Dict], max_items: int = 5) -> Dict[str, List[str]]:
+    """
+    USP 후보를 카테고리별로 정리하여 요약
+
+    Args:
+        usp_candidates: USP 후보 리스트
+        max_items: 카테고리당 최대 항목 수
+
+    Returns:
+        {'visual': ['문장1', '문장2'], 'tactile': [...], ...}
+    """
+    summary = {}
+
+    for candidate in usp_candidates:
+        category = candidate.get('category', 'other')
+        sentence = candidate.get('sentence', '')
+
+        if category not in summary:
+            summary[category] = []
+
+        if len(summary[category]) < max_items:
+            summary[category].append(sentence)
+
+    return summary
+
+
 # 테스트
 if __name__ == "__main__":
     sample_reviews = [

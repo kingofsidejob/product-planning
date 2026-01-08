@@ -129,6 +129,122 @@ def show_analysis_dialog(product_code: str, max_reviews: int = 5000):
     st.divider()
     st.markdown("#### 🎯 마케팅 포인트")
 
+    # 마케팅 포인트 요약 (장점 살리기 + 단점 보완)
+    strengths_list = saved_analysis.get('strengths', [])
+    weaknesses_list = saved_analysis.get('weaknesses', [])
+
+    if strengths_list or weaknesses_list:
+        st.markdown("##### 📋 마케팅 포인트 요약")
+
+        summary_box = ""
+
+        # 살려야 할 장점
+        if strengths_list:
+            top_strengths = strengths_list[:3]  # 상위 3개
+            strength_keywords = [s.split(':')[0].strip() if ':' in s else s[:20] for s in top_strengths]
+            summary_box += f"**✅ 강조할 포인트**: {', '.join(strength_keywords)}\n\n"
+            summary_box += "→ 이 장점들은 소비자들이 가장 많이 언급한 긍정 요소입니다. 마케팅에서 적극 활용하세요.\n\n"
+
+        # 보완해야 할 단점
+        if weaknesses_list:
+            top_weaknesses = weaknesses_list[:3]  # 상위 3개
+            weakness_keywords = [w.split(':')[0].strip() if ':' in w else w[:20] for w in top_weaknesses]
+            summary_box += f"**⚠️ 개선 필요**: {', '.join(weakness_keywords)}\n\n"
+            summary_box += "→ 이 단점들은 소비자 불만이 집중된 부분입니다. 제품 개선 또는 마케팅 메시지로 보완을 고려하세요."
+
+        st.info(summary_box)
+
+        # USP 후보 표시 (DB에 저장된 데이터 사용, 없으면 샘플에서 추출)
+        usp_candidates = saved_analysis.get('usp_candidates', [])
+        viral_keyword_counts = saved_analysis.get('viral_keyword_counts', {})
+
+        # 기존 데이터 호환: usp_candidates가 없으면 review_samples에서 추출
+        if not usp_candidates:
+            review_samples = saved_analysis.get('review_samples', [])
+            if review_samples:
+                try:
+                    from modules.review_analyzer import extract_usp_from_reviews
+                    usp_candidates = extract_usp_from_reviews(review_samples)
+                except:
+                    pass
+
+        # 기존 데이터 호환: viral_keyword_counts가 없으면 review_samples에서 카운트
+        if not viral_keyword_counts:
+            review_samples = saved_analysis.get('review_samples', [])
+            if review_samples:
+                try:
+                    from modules.usp_dictionary import get_usp_dictionary
+                    usp_dict = get_usp_dictionary()
+                    viral_keywords = usp_dict.get_keywords_by_category('viral')
+                    all_text = ' '.join([r.get('content', '') for r in review_samples])
+                    for vk in viral_keywords:
+                        count = all_text.count(vk)
+                        if count > 0:
+                            viral_keyword_counts[vk] = count
+                except:
+                    pass
+
+        # 카테고리 한글명 매핑
+        category_names = {
+            'visual': '시각적 특징',
+            'tactile': '촉감/제형',
+            'action': '사용 시 변화',
+            'olfactory': '향 특징',
+            'design': '디자인/휴대성',
+            'reaction': '소비자 반응',
+            'viral': '바이럴/SNS'
+        }
+
+        if usp_candidates:
+            st.markdown("**🎯 USP 후보** (제품의 특별한 점)")
+
+            # 카테고리별로 문장과 키워드 수집 (중복 제거)
+            by_category = {}
+            seen_sentences = set()
+            for usp in usp_candidates:
+                cat = usp.get('category', 'other')
+                sentence = usp.get('sentence', '')
+                keywords = usp.get('trigger_words', [])
+
+                # 문장 앞 20자 기준 중복 체크
+                sent_key = sentence[:20]
+                if sent_key in seen_sentences:
+                    continue
+                seen_sentences.add(sent_key)
+
+                if cat not in by_category:
+                    by_category[cat] = []
+
+                # 전체 문장 표시 (잘리지 않게)
+                if keywords and sentence:
+                    keyword = keywords[0]
+                    by_category[cat].append({
+                        'keyword': keyword,
+                        'context': sentence.strip()
+                    })
+
+            usp_items = []
+            for cat, items in by_category.items():
+                cat_name = category_names.get(cat, cat)
+                for item in items[:2]:  # 카테고리당 최대 2개
+                    usp_items.append({
+                        'category': cat_name,
+                        'keyword': item['keyword'],
+                        'context': item['context']
+                    })
+
+            if usp_items:
+                for usp_item in usp_items:
+                    st.success(f"**[{usp_item['category']}]** {usp_item['keyword']}: \"{usp_item['context']}\"")
+                st.caption("💡 리뷰에서 발견된 USP입니다. 신제품 기획 시 차별화 포인트로 참고하세요!")
+
+        # 바이럴 키워드 언급 횟수 표시
+        if viral_keyword_counts:
+            counts_str = ', '.join([f"{kw} {cnt}회" for kw, cnt in sorted(viral_keyword_counts.items(), key=lambda x: -x[1])])
+            st.info(f"📢 **바이럴 채널 언급**: {counts_str}")
+
+        st.divider()
+
     # 유니크 포인트 (차별화 요소) - 전체 내용 표시
     unique_features = saved_analysis.get('unique_features', [])
 
@@ -313,6 +429,44 @@ def run_review_analysis(product_code: str, max_reviews: int = 100, save_to_db: b
             progress_bar.progress(1.0)
             status_text.text(f"분석 완료: {len(reviews)}개 리뷰")
 
+            # 전체 리뷰에서 USP 후보 추출
+            usp_candidates_to_save = []
+            viral_counts_to_save = {}
+            try:
+                from modules.review_analyzer import extract_usp_from_reviews
+                from modules.usp_dictionary import get_usp_dictionary
+
+                # 전체 리뷰에서 USP 추출
+                all_usp = extract_usp_from_reviews(reviews)
+
+                # 중복 제거 후 저장 (카테고리당 최대 5개)
+                seen = set()
+                by_cat = {}
+                for usp in all_usp:
+                    cat = usp.get('category', 'other')
+                    sent = usp.get('sentence', '')
+                    key = sent[:30]
+                    if key not in seen:
+                        seen.add(key)
+                        if cat not in by_cat:
+                            by_cat[cat] = []
+                        if len(by_cat[cat]) < 5:
+                            by_cat[cat].append(usp)
+
+                for cat, items in by_cat.items():
+                    usp_candidates_to_save.extend(items)
+
+                # 전체 리뷰에서 바이럴 키워드 카운트
+                usp_dict = get_usp_dictionary()
+                viral_keywords = usp_dict.get_keywords_by_category('viral')
+                all_text = ' '.join([r.get('content', '') for r in reviews])
+                for vk in viral_keywords:
+                    count = all_text.count(vk)
+                    if count > 0:
+                        viral_counts_to_save[vk] = count
+            except Exception as e:
+                pass  # USP 추출 실패 시 무시
+
             # DB에 저장
             if save_to_db:
                 analysis_data = {
@@ -333,7 +487,9 @@ def run_review_analysis(product_code: str, max_reviews: int = 100, save_to_db: b
                     'competitor_mentions': marketing.get('competitor_mentions', {}),
                     'comparison_insights': marketing.get('comparison_insights', []),
                     'marketing_suggestions': marketing.get('marketing_suggestions', []),
-                    'review_samples': reviews[:10]  # 상위 10개 리뷰만 저장
+                    'review_samples': reviews[:10],  # 상위 10개 리뷰만 저장
+                    'usp_candidates': usp_candidates_to_save,  # 전체 리뷰에서 추출한 USP
+                    'viral_keyword_counts': viral_counts_to_save  # 전체 리뷰에서 카운트한 바이럴 키워드
                 }
                 db.save_review_analysis(product_code, analysis_data)
 
@@ -386,8 +542,8 @@ def main():
         st.stop()
 
     # 탭 구성
-    tab_crawl, tab_products, tab_new, tab_review, tab_history = st.tabs([
-        "🔄 데이터 수집", "📋 수집된 제품", "🆕 신규 진입", "📝 리뷰 분석", "📊 수집 기록"
+    tab_crawl, tab_products, tab_new, tab_review, tab_viral, tab_history = st.tabs([
+        "🔄 데이터 수집", "📋 수집된 제품", "🆕 신규 진입", "📝 리뷰 분석", "🔥 바이럴 아이템", "📊 수집 기록"
     ])
 
     # ===== 크롤링 실행 탭 =====
@@ -416,7 +572,7 @@ def main():
             limit = st.number_input(
                 "수집 개수",
                 min_value=10,
-                max_value=100,
+                max_value=500,
                 value=100,
                 step=10,
                 help="1위부터 지정 개수까지 수집"
@@ -439,6 +595,11 @@ def main():
             if results['total'] > 0:
                 is_first = results.get('is_first_crawl', False)
 
+                # 요청 수보다 적게 수집된 경우 (카테고리 총 상품수가 적은 경우)
+                category_limit_msg = ""
+                if results['total'] < limit:
+                    category_limit_msg = f"\n\n📌 **{selected_category}** 카테고리의 총 상품 수는 **{results['total']}개**입니다."
+
                 if is_first:
                     st.success(f"""
                     ✅ **첫 수집 완료!**
@@ -446,7 +607,7 @@ def main():
                     - 📝 DB 등록: **{results['new']}개**
                     - 🔄 기존 업데이트: **{results['updated']}개**
 
-                    💡 다음 수집부터 신규 진입 상품이 감지됩니다.
+                    💡 다음 수집부터 신규 진입 상품이 감지됩니다.{category_limit_msg}
                     """)
                 else:
                     new_entries = [p for p in results['products'] if p.get('is_new_entry')]
@@ -454,7 +615,7 @@ def main():
                     ✅ **수집 완료!**
                     - 총 수집: **{results['total']}개**
                     - 🆕 신규 진입: **{len(new_entries)}개**
-                    - 🔄 기존 업데이트: **{results['updated']}개**
+                    - 🔄 기존 업데이트: **{results['updated']}개**{category_limit_msg}
                     """)
 
                 new_entries = [p for p in results['products'] if p.get('is_new_entry')]
@@ -649,9 +810,9 @@ def main():
                     "리뷰 수집 개수",
                     min_value=10,
                     max_value=50000,
-                    value=5000,
-                    step=500,
-                    help="상품당 수집할 최대 리뷰 개수 (기본 5000개, 필요시 증가 가능)"
+                    value=500,
+                    step=100,
+                    help="상품당 수집할 최대 리뷰 개수 (기본 500개)"
                 )
 
             # 수동 상품코드 입력
@@ -690,9 +851,10 @@ def main():
                 # 전체 선택
                 review_products = db.get_oliveyoung_products(category=None)
 
-            # 분석 완료된 상품 코드 및 날짜 목록
+            # 분석 완료된 상품 코드, 날짜, 리뷰 개수 목록
             analyzed_codes = db.get_analyzed_product_codes()
             analyzed_dates = db.get_analyzed_product_dates()
+            analyzed_review_counts = db.get_analyzed_product_review_counts()
 
             if review_products:
                 analyzed_count = sum(1 for p in review_products if p.get('product_code') in analyzed_codes)
@@ -700,31 +862,52 @@ def main():
 
                 st.divider()
 
-                # 일괄 수집 버튼
-                col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
+                # 일괄 수집/삭제 버튼
+                col_btn1, col_btn2, col_btn3, col_btn4 = st.columns([1, 1, 1, 1])
 
                 with col_btn1:
                     if st.button("✅ 전체 선택", use_container_width=True):
-                        st.session_state.selected_products = {
-                            p['product_code'] for p in review_products[:100]
+                        # 미분석 상품들의 코드 목록
+                        unanalyzed_codes = {
+                            p['product_code'] for p in review_products[:500]
                             if p.get('product_code') and p['product_code'] not in analyzed_codes
                         }
+                        st.session_state.selected_products = unanalyzed_codes
+                        # 체크박스 상태도 동기화
+                        for code in unanalyzed_codes:
+                            st.session_state[f"check_{code}"] = True
                         st.rerun()
 
                 with col_btn2:
                     if st.button("❌ 선택 해제", use_container_width=True):
+                        # 체크박스 상태 초기화
+                        for code in st.session_state.selected_products:
+                            if f"check_{code}" in st.session_state:
+                                st.session_state[f"check_{code}"] = False
                         st.session_state.selected_products = set()
                         st.rerun()
 
                 with col_btn3:
                     selected_count = len(st.session_state.selected_products)
                     if st.button(
-                        f"🚀 선택한 {selected_count}개 일괄 수집",
+                        f"🚀 선택한 {selected_count}개 수집",
                         type="primary",
                         disabled=selected_count == 0,
                         use_container_width=True
                     ):
                         st.session_state.batch_crawling = True
+                        st.rerun()
+
+                with col_btn4:
+                    if st.button(
+                        f"🗑️ 선택한 {selected_count}개 삭제",
+                        disabled=selected_count == 0,
+                        use_container_width=True
+                    ):
+                        for product_code in st.session_state.selected_products:
+                            db.delete_oliveyoung_product(product_code)
+                        st.session_state.selected_products = set()
+                        st.success(f"✅ {selected_count}개 상품이 삭제되었습니다.")
                         st.rerun()
 
                 # 일괄 수집 실행
@@ -788,7 +971,7 @@ def main():
                     ]
                     st.caption(f"🔎 '{search_query}' 검색 결과: {len(filtered_products)}개")
 
-                for product in filtered_products[:100]:
+                for product in filtered_products[:500]:
                     product_code = product.get('product_code', '')
                     is_analyzed = product_code in analyzed_codes
                     is_selected = product_code in st.session_state.selected_products
@@ -798,9 +981,18 @@ def main():
 
                         with col_check:
                             if not is_analyzed:
-                                if st.checkbox("", value=is_selected, key=f"check_{product_code}", label_visibility="collapsed"):
+                                # 체크박스 키가 없으면 초기화
+                                checkbox_key = f"check_{product_code}"
+                                if checkbox_key not in st.session_state:
+                                    st.session_state[checkbox_key] = is_selected
+
+                                # 체크박스 표시 및 상태 동기화
+                                checked = st.checkbox("", key=checkbox_key, label_visibility="collapsed")
+
+                                # 체크박스 상태에 따라 selected_products 업데이트
+                                if checked and product_code not in st.session_state.selected_products:
                                     st.session_state.selected_products.add(product_code)
-                                else:
+                                elif not checked and product_code in st.session_state.selected_products:
                                     st.session_state.selected_products.discard(product_code)
                             else:
                                 st.markdown("✅")
@@ -808,14 +1000,15 @@ def main():
                         with col_info:
                             st.markdown(f"**{product['brand']}** - {product['name']}")
                             if is_analyzed:
-                                # 분석 날짜 표시
+                                # 분석 날짜 및 리뷰 개수 표시
                                 analyzed_at = analyzed_dates.get(product_code, '')
+                                review_count = analyzed_review_counts.get(product_code, 0)
                                 if analyzed_at:
                                     # 날짜 포맷: 2026-01-07 12:34:56 -> 2026.01.07
                                     date_str = analyzed_at[:10].replace('-', '.')
-                                    st.caption(f"✅ 분석완료 · 베스트 {product.get('best_rank', '-')}위 · `{product_code}` · 📅 {date_str}")
+                                    st.caption(f"✅ 분석완료 · 베스트 {product.get('best_rank', '-')}위 · `{product_code}` · 📅 {date_str} ({review_count}개 리뷰)")
                                 else:
-                                    st.caption(f"✅ 분석완료 · 베스트 {product.get('best_rank', '-')}위 · `{product_code}`")
+                                    st.caption(f"✅ 분석완료 · 베스트 {product.get('best_rank', '-')}위 · `{product_code}` ({review_count}개 리뷰)")
                             else:
                                 st.caption(f"⏳ 미분석 · 베스트 {product.get('best_rank', '-')}위 · `{product_code}`")
 
@@ -841,6 +1034,72 @@ def main():
                     st.caption(f"상위 100개만 표시 (전체 {len(review_products)}개)")
             else:
                 st.info("수집된 제품이 없습니다. '데이터 수집' 탭에서 먼저 상품을 수집하세요.")
+
+    # ===== 바이럴 아이템 탭 =====
+    with tab_viral:
+        st.subheader("🔥 바이럴 아이템 랭킹")
+        st.caption("SNS/바이럴 채널에서 언급된 제품을 언급 횟수 순으로 정렬합니다.")
+
+        # DB에서 바이럴 키워드 카운트가 있는 제품 조회
+        viral_products = []
+        try:
+            import json as json_lib
+            with db.get_connection() as conn:
+                cursor = conn.execute("""
+                    SELECT product_code, brand, name, total_reviews, viral_keyword_counts, analyzed_at
+                    FROM review_analysis
+                    WHERE viral_keyword_counts IS NOT NULL AND viral_keyword_counts != '{}' AND viral_keyword_counts != 'null'
+                """)
+                for row in cursor.fetchall():
+                    try:
+                        counts = json_lib.loads(row['viral_keyword_counts']) if row['viral_keyword_counts'] else {}
+                        if counts:
+                            total_viral = sum(counts.values())
+                            viral_products.append({
+                                'product_code': row['product_code'],
+                                'brand': row['brand'],
+                                'name': row['name'],
+                                'total_reviews': row['total_reviews'],
+                                'viral_counts': counts,
+                                'total_viral': total_viral,
+                                'analyzed_at': row['analyzed_at']
+                            })
+                    except:
+                        pass
+        except Exception as e:
+            st.error(f"데이터 조회 오류: {e}")
+
+        # 총 바이럴 언급 수로 정렬
+        viral_products.sort(key=lambda x: x['total_viral'], reverse=True)
+
+        if viral_products:
+            st.success(f"🎯 바이럴 언급이 있는 제품: **{len(viral_products)}개**")
+
+            # 상위 100개만 표시
+            for rank, product in enumerate(viral_products[:100], 1):
+                with st.container(border=True):
+                    col_rank, col_info, col_viral = st.columns([0.5, 3, 2])
+
+                    with col_rank:
+                        st.markdown(f"### {rank}")
+
+                    with col_info:
+                        st.markdown(f"**{product['brand']}** - {product['name'][:50]}{'...' if len(product['name']) > 50 else ''}")
+                        analyzed_date = product['analyzed_at'][:10].replace('-', '.') if product['analyzed_at'] else '-'
+                        st.caption(f"📊 리뷰 {product['total_reviews']}개 · 📅 {analyzed_date} · `{product['product_code']}`")
+
+                    with col_viral:
+                        # 바이럴 키워드별 언급 횟수
+                        counts_str = ', '.join([f"**{kw}** {cnt}회" for kw, cnt in sorted(product['viral_counts'].items(), key=lambda x: -x[1])])
+                        st.info(f"📢 총 **{product['total_viral']}회** 언급\n\n{counts_str}")
+
+            if len(viral_products) > 100:
+                st.caption(f"상위 100개만 표시 (전체 {len(viral_products)}개)")
+        else:
+            st.info("바이럴 언급이 있는 제품이 없습니다. 리뷰 분석 탭에서 제품을 수집/재수집하세요.")
+
+        st.divider()
+        st.caption("💡 바이럴 키워드: 인스타, 유튜브, 틱톡, 숏츠, 릴스, 와디즈, 공구, 공동구매 등")
 
     # ===== 히스토리 탭 =====
     with tab_history:

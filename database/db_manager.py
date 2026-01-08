@@ -321,7 +321,7 @@ class DatabaseManager:
 
                 conn.execute("""
                     UPDATE oliveyoung_products SET
-                        brand = ?, name = ?, price = ?, original_price = ?,
+                        brand = ?, name = ?, category = ?, price = ?, original_price = ?,
                         product_url = ?, image_url = ?, best_rank = ?,
                         review_count = ?, is_new = ?,
                         last_seen_at = CURRENT_TIMESTAMP,
@@ -330,6 +330,7 @@ class DatabaseManager:
                 """, (
                     data.get('brand'),
                     data.get('name'),
+                    data.get('category'),
                     data.get('price'),
                     data.get('original_price'),
                     data.get('product_url'),
@@ -382,6 +383,15 @@ class DatabaseManager:
 
             cursor = conn.execute(query, params)
             return [dict(row) for row in cursor.fetchall()]
+
+    def delete_oliveyoung_product(self, product_code: str) -> bool:
+        """올리브영 제품 삭제 (관련 리뷰 분석도 함께 삭제)"""
+        with self.get_connection() as conn:
+            # 리뷰 분석 삭제
+            conn.execute("DELETE FROM review_analysis WHERE product_code = ?", (product_code,))
+            # 상품 삭제
+            conn.execute("DELETE FROM oliveyoung_products WHERE product_code = ?", (product_code,))
+            return True
 
     def get_new_oliveyoung_entries(self, category: str = None) -> List[Dict]:
         """
@@ -469,6 +479,7 @@ class DatabaseManager:
                         repeated_keywords = ?, unique_features = ?,
                         competitor_mentions = ?, comparison_insights = ?,
                         marketing_suggestions = ?, review_samples = ?,
+                        usp_candidates = ?, viral_keyword_counts = ?,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE product_code = ?
                 """, (
@@ -490,6 +501,8 @@ class DatabaseManager:
                     json.dumps(analysis_data.get('comparison_insights', []), ensure_ascii=False),
                     json.dumps(analysis_data.get('marketing_suggestions', []), ensure_ascii=False),
                     json.dumps(analysis_data.get('review_samples', []), ensure_ascii=False),
+                    json.dumps(analysis_data.get('usp_candidates', []), ensure_ascii=False),
+                    json.dumps(analysis_data.get('viral_keyword_counts', {}), ensure_ascii=False),
                     product_code
                 ))
                 return existing['id']
@@ -504,8 +517,9 @@ class DatabaseManager:
                         category_scores, summary,
                         repeated_keywords, unique_features,
                         competitor_mentions, comparison_insights,
-                        marketing_suggestions, review_samples
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        marketing_suggestions, review_samples,
+                        usp_candidates, viral_keyword_counts
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     product_code,
                     analysis_data.get('brand'),
@@ -525,7 +539,9 @@ class DatabaseManager:
                     json.dumps(analysis_data.get('competitor_mentions', {}), ensure_ascii=False),
                     json.dumps(analysis_data.get('comparison_insights', []), ensure_ascii=False),
                     json.dumps(analysis_data.get('marketing_suggestions', []), ensure_ascii=False),
-                    json.dumps(analysis_data.get('review_samples', []), ensure_ascii=False)
+                    json.dumps(analysis_data.get('review_samples', []), ensure_ascii=False),
+                    json.dumps(analysis_data.get('usp_candidates', []), ensure_ascii=False),
+                    json.dumps(analysis_data.get('viral_keyword_counts', {}), ensure_ascii=False)
                 ))
                 return cursor.lastrowid
 
@@ -553,13 +569,20 @@ class DatabaseManager:
             cursor = conn.execute("SELECT product_code, analyzed_at FROM review_analysis")
             return {row['product_code']: row['analyzed_at'] for row in cursor.fetchall()}
 
+    def get_analyzed_product_review_counts(self) -> Dict[str, int]:
+        """분석 완료된 상품 코드와 리뷰 수집 개수 딕셔너리"""
+        with self.get_connection() as conn:
+            cursor = conn.execute("SELECT product_code, total_reviews FROM review_analysis")
+            return {row['product_code']: row['total_reviews'] for row in cursor.fetchall()}
+
     def _parse_review_analysis_row(self, row: Dict) -> Dict[str, Any]:
         """리뷰 분석 JSON 필드 파싱"""
         json_fields = [
             'strengths', 'weaknesses', 'top_positive_keywords',
             'top_negative_keywords', 'category_scores', 'repeated_keywords',
             'unique_features', 'competitor_mentions', 'comparison_insights',
-            'marketing_suggestions', 'review_samples'
+            'marketing_suggestions', 'review_samples',
+            'usp_candidates', 'viral_keyword_counts'
         ]
         for field in json_fields:
             if row.get(field):

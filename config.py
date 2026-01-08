@@ -9,6 +9,12 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 EXPORTS_DIR = os.path.join(DATA_DIR, "exports")
 DB_PATH = os.path.join(BASE_DIR, "database", "cosmetics_research.db")
 
+# USP 트리거 사전 경로
+DICTIONARIES_DIR = os.path.join(DATA_DIR, "dictionaries")
+TRIGGER_KEYWORDS_PATH = os.path.join(DICTIONARIES_DIR, "trigger_keywords.json")
+EXCLUSION_WORDS_PATH = os.path.join(DICTIONARIES_DIR, "exclusion_words.json")
+CANDIDATE_KEYWORDS_PATH = os.path.join(DICTIONARIES_DIR, "candidate_keywords.json")
+
 # 카테고리 옵션
 PRODUCT_CATEGORIES = [
     "스킨케어",

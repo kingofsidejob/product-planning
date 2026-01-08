@@ -217,19 +217,23 @@ class OliveyoungBrowserCrawler:
             raise ValueError(f"알 수 없는 카테고리: {category}. 사용 가능한 카테고리: {list(self.CATEGORIES.keys())}")
         url = f"{self.CATEGORY_URL}?dispCatNo={category_code}"
 
-        # 페이지 접속
-        await self.page.goto(url, wait_until="networkidle", timeout=30000)
-        await self.page.wait_for_timeout(2000)  # 동적 로딩 대기
+        # 페이지 접속 (타임아웃 60초, domcontentloaded로 변경)
+        await self.page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        await self.page.wait_for_timeout(3000)  # 동적 로딩 대기
 
         # 봇 감지 페이지 대기
         try:
-            await self.page.wait_for_selector(".prd_info", timeout=15000)
+            await self.page.wait_for_selector(".prd_info", timeout=20000)
         except:
             # 봇 감지 페이지일 수 있음, 추가 대기
             await self.page.wait_for_timeout(5000)
-            await self.page.wait_for_selector(".prd_info", timeout=15000)
+            await self.page.wait_for_selector(".prd_info", timeout=20000)
+
+        # 페이지당 48개 상품 표시 설정
+        await self.set_items_per_page(48)
 
         all_products = []
+        seen_codes = set()  # 중복 체크용
         page_num = 1
 
         while len(all_products) < limit:
@@ -239,12 +243,14 @@ class OliveyoungBrowserCrawler:
             if not products:
                 break
 
-            # 순위 설정 (이전 페이지 상품 수 + 현재 인덱스)
-            for i, product in enumerate(products):
-                product['rank'] = len(all_products) + i + 1
-                product['category'] = category
-
-            all_products.extend(products)
+            # 중복 제거 및 순위 설정
+            for product in products:
+                product_code = product.get('product_code')
+                if product_code and product_code not in seen_codes:
+                    seen_codes.add(product_code)
+                    product['rank'] = len(all_products) + 1
+                    product['category'] = category
+                    all_products.append(product)
 
             if progress_callback:
                 progress_callback(len(all_products), limit)
@@ -315,23 +321,28 @@ class OliveyoungBrowserCrawler:
         return products
 
     async def _go_to_next_page(self, page_num: int) -> bool:
-        """다음 페이지로 이동"""
+        """다음 페이지로 이동 (URL 파라미터 방식)"""
         try:
-            # 페이지 버튼 클릭
-            page_btn = await self.page.query_selector(f'.pageing a:has-text("{page_num}")')
-            if page_btn:
-                await page_btn.click()
-                await self.page.wait_for_load_state("networkidle")
-                return True
+            current_url = self.page.url
 
-            # 다음 페이지 버튼 (>>) 시도
-            next_btn = await self.page.query_selector('.pageing .next')
-            if next_btn:
-                await next_btn.click()
-                await self.page.wait_for_load_state("networkidle")
-                return True
+            # URL에 pageIdx 파라미터 추가/수정
+            if 'pageIdx=' in current_url:
+                import re
+                new_url = re.sub(r'pageIdx=\d+', f'pageIdx={page_num}', current_url)
+            else:
+                separator = '&' if '?' in current_url else '?'
+                new_url = f"{current_url}{separator}pageIdx={page_num}"
 
-            return False
+            await self.page.goto(new_url, wait_until="domcontentloaded", timeout=60000)
+            await self.page.wait_for_timeout(3000)
+
+            # 상품이 로드되었는지 확인
+            try:
+                await self.page.wait_for_selector(".prd_info", timeout=20000)
+                return True
+            except:
+                return False
+
         except Exception as e:
             print(f"페이지 이동 실패: {e}")
             return False
@@ -339,13 +350,41 @@ class OliveyoungBrowserCrawler:
     async def set_items_per_page(self, count: int = 48):
         """페이지당 상품 수 설정 (24, 36, 48)"""
         try:
-            # VIEW 옵션 클릭
-            view_btn = await self.page.query_selector(f'.view_num a:has-text("{count}")')
-            if view_btn:
-                await view_btn.click()
+            # VIEW 옵션 클릭 (다양한 셀렉터 시도)
+            selectors = [
+                f'.view_num a:has-text("{count}")',
+                f'a:has-text("VIEW"):has-text("{count}")',
+                f'[class*="view"] a:has-text("{count}")',
+                f'a[href*="pageSize={count}"]',
+            ]
+
+            for selector in selectors:
+                view_btn = await self.page.query_selector(selector)
+                if view_btn:
+                    await view_btn.click()
+                    await self.page.wait_for_load_state("networkidle")
+                    await self.page.wait_for_timeout(1500)
+                    return True
+
+            # JavaScript로 직접 클릭 시도
+            js_code = f"""
+            () => {{
+                const links = document.querySelectorAll('a');
+                for (const link of links) {{
+                    if (link.textContent.trim() === '{count}') {{
+                        link.click();
+                        return true;
+                    }}
+                }}
+                return false;
+            }}
+            """
+            result = await self.page.evaluate(js_code)
+            if result:
                 await self.page.wait_for_load_state("networkidle")
-                await self.page.wait_for_timeout(1000)
+                await self.page.wait_for_timeout(1500)
                 return True
+
         except Exception as e:
             print(f"보기 설정 실패: {e}")
         return False
