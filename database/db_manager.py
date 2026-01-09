@@ -28,6 +28,41 @@ class DatabaseManager:
             create_tables(conn)
             run_migrations(conn)
 
+    def _parse_json_fields(
+        self,
+        row: Dict[str, Any],
+        list_fields: List[str] = None,
+        dict_fields: List[str] = None
+    ) -> Dict[str, Any]:
+        """
+        공통 JSON 파싱 헬퍼 함수
+        
+        Args:
+            row: 파싱할 row 딕셔너리
+            list_fields: 리스트로 파싱할 필드 목록
+            dict_fields: 딕셔너리로 파싱할 필드 목록
+            
+        Returns:
+            파싱된 row 딕셔너리
+        """
+        if list_fields:
+            for field in list_fields:
+                if row.get(field):
+                    try:
+                        row[field] = json.loads(row[field])
+                    except json.JSONDecodeError:
+                        row[field] = []
+        
+        if dict_fields:
+            for field in dict_fields:
+                if row.get(field):
+                    try:
+                        row[field] = json.loads(row[field])
+                    except json.JSONDecodeError:
+                        row[field] = {}
+        
+        return row
+
     @contextmanager
     def get_connection(self):
         """컨텍스트 매니저로 데이터베이스 연결 관리"""
@@ -146,18 +181,12 @@ class DatabaseManager:
 
     def _parse_competitor_row(self, row: Dict) -> Dict[str, Any]:
         """경쟁사 제품 JSON 필드 파싱"""
-        json_fields = [
+        dict_fields = [
             'design_packaging', 'user_experience', 'formulation',
             'color', 'scent', 'ingredients', 'technology',
             'usage_environment', 'marketing', 'sustainability'
         ]
-        for field in json_fields:
-            if row.get(field):
-                try:
-                    row[field] = json.loads(row[field])
-                except json.JSONDecodeError:
-                    row[field] = {}
-        return row
+        return self._parse_json_fields(row, dict_fields=dict_fields)
 
     # ==================== 과거 특이 제품 CRUD ====================
 
@@ -291,14 +320,8 @@ class DatabaseManager:
 
     def _parse_proposal_row(self, row: Dict) -> Dict[str, Any]:
         """신제품 제안 JSON 필드 파싱"""
-        json_fields = ['key_features', 'reference_competitor_ids', 'reference_legacy_ids']
-        for field in json_fields:
-            if row.get(field):
-                try:
-                    row[field] = json.loads(row[field])
-                except json.JSONDecodeError:
-                    row[field] = []
-        return row
+        list_fields = ['key_features', 'reference_competitor_ids', 'reference_legacy_ids']
+        return self._parse_json_fields(row, list_fields=list_fields)
 
     # ==================== 올리브영 제품 CRUD ====================
 
@@ -590,20 +613,15 @@ class DatabaseManager:
 
     def _parse_review_analysis_row(self, row: Dict) -> Dict[str, Any]:
         """리뷰 분석 JSON 필드 파싱"""
-        json_fields = [
+        list_fields = [
             'strengths', 'weaknesses', 'top_positive_keywords',
-            'top_negative_keywords', 'category_scores', 'repeated_keywords',
-            'unique_features', 'competitor_mentions', 'comparison_insights',
+            'top_negative_keywords', 'repeated_keywords',
+            'unique_features', 'comparison_insights',
             'marketing_suggestions', 'review_samples',
-            'usp_candidates', 'viral_keyword_counts'
+            'usp_candidates'
         ]
-        for field in json_fields:
-            if row.get(field):
-                try:
-                    row[field] = json.loads(row[field])
-                except json.JSONDecodeError:
-                    row[field] = [] if field != 'category_scores' and field != 'competitor_mentions' else {}
-        return row
+        dict_fields = ['category_scores', 'competitor_mentions', 'viral_keyword_counts']
+        return self._parse_json_fields(row, list_fields=list_fields, dict_fields=dict_fields)
 
     # ==================== 발굴된 과거 제품 CRUD ====================
 
@@ -711,15 +729,9 @@ class DatabaseManager:
 
     def _parse_discovered_product_row(self, row: Dict) -> Dict[str, Any]:
         """발굴된 제품 JSON 필드 파싱"""
-        json_fields = ['review_samples', 'strengths', 'weaknesses',
+        list_fields = ['review_samples', 'strengths', 'weaknesses',
                        'inferred_discontinuation_reasons', 'marketing_points']
-        for field in json_fields:
-            if row.get(field):
-                try:
-                    row[field] = json.loads(row[field])
-                except json.JSONDecodeError:
-                    row[field] = []
-        return row
+        return self._parse_json_fields(row, list_fields=list_fields)
 
     # ==================== 통계 ====================
 
