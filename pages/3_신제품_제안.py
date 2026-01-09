@@ -169,6 +169,12 @@ def generate_oliveyoung_prompt(analyses: list) -> str:
     if not analyses:
         return ""
 
+    # 올리브영 제품 정보를 한 번만 조회하여 딕셔너리로 변환 (성능 최적화)
+    oliveyoung_products_dict = {
+        p['product_code']: p
+        for p in db.get_oliveyoung_products()
+    }
+
     # 제품 정보 수집
     products_info = []
     all_strengths = []  # (키워드, 원문) 튜플
@@ -225,16 +231,13 @@ def generate_oliveyoung_prompt(analyses: list) -> str:
         for r in a.get('review_samples', [])[:3]:
             all_review_samples.append(r.get('content', '')[:100])
 
-        # 올리브영 제품 정보에서 카테고리, 가격 가져오기
-        if product_code:
-            oliveyoung_products = db.get_oliveyoung_products()
-            for p in oliveyoung_products:
-                if p.get('product_code') == product_code:
-                    if p.get('category'):
-                        categories.add(p['category'])
-                    if p.get('price'):
-                        prices.append(p['price'])
-                    break
+        # 올리브영 제품 정보에서 카테고리, 가격 가져오기 (딕셔너리 조회로 최적화)
+        if product_code and product_code in oliveyoung_products_dict:
+            p = oliveyoung_products_dict[product_code]
+            if p.get('category'):
+                categories.add(p['category'])
+            if p.get('price'):
+                prices.append(p['price'])
 
     # 장점/단점 빈도 분석
     def get_freq_with_samples(items):
