@@ -10,6 +10,143 @@ from collections import Counter
 from config import DB_PATH, PRODUCT_CATEGORIES, REVIVAL_POTENTIAL_LABELS
 from database.db_manager import DatabaseManager
 
+# AI 모델 설정
+# Note: Sonnet 4.5, Haiku 4.5는 아직 API 미지원 (웹에서만 사용 가능)
+AI_MODELS = {
+    "Claude Opus 4.5 (최고 품질)": {
+        "provider": "anthropic",
+        "id": "claude-opus-4-5-20251101",
+        "cost": "~₩300원",
+        "thinking_budget": 10000
+    },
+    "Claude Sonnet 4 (균형)": {
+        "provider": "anthropic",
+        "id": "claude-sonnet-4-20250514",
+        "cost": "~₩40원",
+        "thinking_budget": 5000
+    },
+    "Claude Haiku 3.5 (빠름)": {
+        "provider": "anthropic",
+        "id": "claude-3-5-haiku-20241022",
+        "cost": "~₩3원",
+        "thinking_budget": 0
+    },
+    "GPT-5.2 (OpenAI 최신)": {
+        "provider": "openai",
+        "id": "gpt-5.2",
+        "cost": "~₩50원"
+    },
+    "GPT-4o (균형)": {
+        "provider": "openai",
+        "id": "gpt-4o",
+        "cost": "~₩30원"
+    }
+}
+
+# 시스템 프롬프트 (출력 품질 향상)
+SYSTEM_PROMPT = """당신은 올리브영 베스트셀러를 기획하는 **시니어 화장품 신제품 기획자**입니다.
+
+## 역할
+- 10년 이상의 화장품 기획 경력
+- 올리브영 트렌드와 MZ세대 소비 패턴에 정통
+- 실제 출시 가능한 구체적인 제품 아이디어 제안
+
+## 출력 스타일
+- 각 아이디어는 **구체적이고 실행 가능**하게 작성
+- 컨셉명은 **트렌디하고 기억에 남는** 네이밍
+- USP는 **경쟁사와 명확히 차별화**되는 포인트
+- 마케팅 포인트는 **실제 광고 카피로 사용 가능**한 수준
+- 데이터에 기반한 **논리적 근거** 제시
+
+## 주의사항
+- 분석 데이터의 장점/단점을 반드시 반영
+- 추상적인 제안 대신 구체적인 제형, 성분, 용량 제안
+- 올리브영 가격대와 타겟층에 맞는 현실적인 제안"""
+
+
+def call_ai_api(prompt: str, model_info: dict) -> str:
+    """AI API 호출 (Claude/OpenAI 지원)"""
+    provider = model_info.get("provider", "anthropic")
+    model_id = model_info.get("id", "")
+
+    if provider == "anthropic":
+        return _call_claude_api(prompt, model_id, model_info.get("thinking_budget", 0))
+    elif provider == "openai":
+        return _call_openai_api(prompt, model_id)
+    else:
+        return f"❌ 지원하지 않는 provider: {provider}"
+
+
+def _call_claude_api(prompt: str, model_id: str, thinking_budget: int = 0) -> str:
+    """Claude API 호출 (Extended Thinking 지원)"""
+    try:
+        import anthropic
+
+        api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
+        if not api_key:
+            return "❌ ANTHROPIC_API_KEY가 설정되지 않았습니다. .streamlit/secrets.toml 파일을 확인해주세요."
+
+        client = anthropic.Anthropic(api_key=api_key)
+
+        if thinking_budget > 0:
+            message = client.messages.create(
+                model=model_id,
+                max_tokens=16000,
+                system=SYSTEM_PROMPT,
+                thinking={
+                    "type": "enabled",
+                    "budget_tokens": thinking_budget
+                },
+                messages=[{"role": "user", "content": prompt}]
+            )
+            result_text = ""
+            for block in message.content:
+                if block.type == "text":
+                    result_text += block.text
+            return result_text
+        else:
+            message = client.messages.create(
+                model=model_id,
+                max_tokens=4096,
+                system=SYSTEM_PROMPT,
+                temperature=1.0,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return message.content[0].text
+
+    except ImportError:
+        return "❌ anthropic 패키지가 설치되지 않았습니다. pip install anthropic"
+    except Exception as e:
+        return f"❌ Claude API 오류: {str(e)}"
+
+
+def _call_openai_api(prompt: str, model_id: str) -> str:
+    """OpenAI API 호출"""
+    try:
+        from openai import OpenAI
+
+        api_key = st.secrets.get("OPENAI_API_KEY", "")
+        if not api_key:
+            return "❌ OPENAI_API_KEY가 설정되지 않았습니다. .streamlit/secrets.toml 파일을 확인해주세요."
+
+        client = OpenAI(api_key=api_key)
+
+        response = client.chat.completions.create(
+            model=model_id,
+            max_completion_tokens=4096,
+            temperature=1.0,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return response.choices[0].message.content
+
+    except ImportError:
+        return "❌ openai 패키지가 설치되지 않았습니다. pip install openai"
+    except Exception as e:
+        return f"❌ OpenAI API 오류: {str(e)}"
+
 st.set_page_config(page_title="신제품 제안", page_icon="💡", layout="wide")
 
 @st.cache_resource
@@ -231,6 +368,10 @@ def generate_oliveyoung_prompt(analyses: list) -> str:
 - **혼합 스타일**: 수분락 제로, 글로우 물광팩 등
 
 각 아이디어는 구체적으로 작성해주세요.
+
+## 출력 형식
+응답은 반드시 다음 제목으로 시작해주세요:
+# 🧴 신제품 아이디어 제안서
 """
 
     return md
@@ -258,36 +399,103 @@ def render_oliveyoung_tab():
 
     st.divider()
 
-    # 프롬프트 생성 버튼 (항상 표시)
-    if st.button("📋 Claude/Gemini/GPT 프롬프트 생성", type="primary", use_container_width=True,
-                help="Claude 또는 GPT에 붙여넣을 프롬프트 생성"):
-        # 버튼 클릭 시 입력값 파싱
-        input_codes = parse_goodsno_input(goodsno_input) if goodsno_input else []
+    # 두 개의 버튼 나란히 배치
+    col1, col2 = st.columns(2)
 
-        if not input_codes:
-            st.error("GOODSNO를 입력해주세요.")
-        else:
-            # 분석 완료/미완료 분류
-            valid_codes = [c for c in input_codes if c in analyzed_codes]
-            invalid_codes = [c for c in input_codes if c not in analyzed_codes]
+    with col1:
+        st.markdown("#### 📋 무료 (복사/붙여넣기)")
+        if st.button("프롬프트 생성", type="secondary", use_container_width=True,
+                    help="Claude/Gemini/GPT에 붙여넣을 프롬프트 생성"):
+            # 버튼 클릭 시 입력값 파싱
+            input_codes = parse_goodsno_input(goodsno_input) if goodsno_input else []
 
-            if invalid_codes:
-                st.warning(f"미분석 GOODSNO {len(invalid_codes)}개는 제외됩니다: {', '.join(invalid_codes[:3])}{'...' if len(invalid_codes) > 3 else ''}")
-
-            if not valid_codes:
-                st.error("분석 완료된 GOODSNO가 없습니다. 올리브영 제품분석에서 먼저 리뷰를 분석해주세요.")
+            if not input_codes:
+                st.error("GOODSNO를 입력해주세요.")
             else:
-                with st.spinner(f"{len(valid_codes)}개 제품 프롬프트 생성 중..."):
-                    analyses = db.get_review_analyses_by_codes(valid_codes)
+                valid_codes = [c for c in input_codes if c in analyzed_codes]
+                invalid_codes = [c for c in input_codes if c not in analyzed_codes]
 
-                if analyses:
-                    prompt = generate_oliveyoung_prompt(analyses)
-                    st.session_state['oliveyoung_prompt'] = prompt
-                    st.success(f"✅ {len(analyses)}개 제품 기반 프롬프트 생성 완료!")
+                if invalid_codes:
+                    st.warning(f"미분석 {len(invalid_codes)}개 제외")
+
+                if not valid_codes:
+                    st.error("분석 완료된 GOODSNO가 없습니다.")
                 else:
-                    st.error("분석 데이터를 가져오지 못했습니다.")
+                    with st.spinner("프롬프트 생성 중..."):
+                        analyses = db.get_review_analyses_by_codes(valid_codes)
 
-    # === 생성된 프롬프트 표시 ===
+                    if analyses:
+                        prompt = generate_oliveyoung_prompt(analyses)
+                        st.session_state['oliveyoung_prompt'] = prompt
+                        st.session_state['api_result'] = None  # API 결과 초기화
+                        st.success(f"✅ {len(analyses)}개 제품 프롬프트 생성!")
+                    else:
+                        st.error("분석 데이터를 가져오지 못했습니다.")
+
+    with col2:
+        st.markdown("#### 🚀 유료 (API 자동 생성)")
+
+        # 버튼 먼저 배치
+        api_clicked = st.button("AI 아이디어 생성", type="primary", use_container_width=True,
+                    help="AI API로 아이디어 자동 생성 (Claude/GPT)")
+
+        # 모델 선택 (우측 하단에 작게 - 1/3 크기)
+        _, model_col = st.columns([2, 1])
+        with model_col:
+            selected_model = st.selectbox(
+                "모델",
+                options=list(AI_MODELS.keys()),
+                index=0,
+                key="model_select",
+                label_visibility="collapsed"
+            )
+            model_info = AI_MODELS[selected_model]
+            st.caption(f"예상: {model_info['cost']}")
+
+        if api_clicked:
+            input_codes = parse_goodsno_input(goodsno_input) if goodsno_input else []
+
+            if not input_codes:
+                st.error("GOODSNO를 입력해주세요.")
+            else:
+                valid_codes = [c for c in input_codes if c in analyzed_codes]
+                invalid_codes = [c for c in input_codes if c not in analyzed_codes]
+
+                if invalid_codes:
+                    st.warning(f"미분석 {len(invalid_codes)}개 제외")
+
+                if not valid_codes:
+                    st.error("분석 완료된 GOODSNO가 없습니다.")
+                else:
+                    thinking_budget = model_info.get('thinking_budget', 0)
+                    thinking_msg = " (Extended Thinking)" if thinking_budget > 0 else ""
+                    with st.spinner(f"{selected_model}로 아이디어 생성 중...{thinking_msg} (약 30-60초 소요)"):
+                        analyses = db.get_review_analyses_by_codes(valid_codes)
+
+                        if analyses:
+                            prompt = generate_oliveyoung_prompt(analyses)
+                            result = call_ai_api(prompt, model_info)
+                            st.session_state['api_result'] = result
+                            st.session_state['oliveyoung_prompt'] = None  # 프롬프트 초기화
+
+                            # 자동 저장 (저장된 제안 탭)
+                            if result and not result.startswith("❌"):
+                                proposal_title = f"AI 제안 ({selected_model}) - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                                db.add_proposal({
+                                    'title': proposal_title,
+                                    'category': '올리브영 분석',
+                                    'concept_description': result,
+                                    'key_features': [f"분석 제품: {len(valid_codes)}개", f"모델: {selected_model}"],
+                                    'notes': f"GOODSNO: {', '.join(valid_codes[:5])}{'...' if len(valid_codes) > 5 else ''}"
+                                })
+                                st.session_state['last_saved_title'] = proposal_title
+                                st.success(f"✅ AI 아이디어 생성 완료!{thinking_msg} (자동 저장됨)")
+                            else:
+                                st.error(result)
+                        else:
+                            st.error("분석 데이터를 가져오지 못했습니다.")
+
+    # === 생성된 프롬프트 표시 (무료) ===
     if 'oliveyoung_prompt' in st.session_state and st.session_state['oliveyoung_prompt']:
         prompt = st.session_state['oliveyoung_prompt']
 
@@ -295,140 +503,60 @@ def render_oliveyoung_tab():
         st.markdown("## 📋 Claude/Gemini/GPT 프롬프트")
         st.caption("오른쪽 상단 📋 버튼을 클릭하면 복사됩니다. → Claude/GPT에 붙여넣기 (Ctrl+V)")
 
-        # 프롬프트 표시 (st.code는 복사 버튼 내장)
         st.code(prompt, language="markdown")
 
-def generate_export_markdown():
-    """Claude용 마크다운 내보내기 생성"""
-    legacy_products = db.get_legacy_products()
-    high_potential = db.get_high_potential_legacy_products(min_score=4)
+    # === API 결과 표시 (유료) ===
+    if 'api_result' in st.session_state and st.session_state['api_result']:
+        result = st.session_state['api_result']
 
-    md = f"""# 화장품 시장 조사 데이터 요약
-생성일: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+        st.divider()
+        st.markdown("## 🚀 AI 생성 아이디어")
+
+        # Markdown 다운로드 버튼
+        col_title, col_download = st.columns([3, 1])
+        with col_title:
+            if 'last_saved_title' in st.session_state:
+                st.caption(f"💾 저장됨: {st.session_state['last_saved_title']}")
+        with col_download:
+            # Markdown 파일 생성
+            md_content = f"""# 신제품 아이디어 제안서
+> 생성일: {datetime.now().strftime('%Y-%m-%d %H:%M')}
 
 ---
 
-## 1. 부활 가능성 높은 과거 제품 ({len(high_potential)}개)
-
+{result}
 """
+            st.download_button(
+                label="📥 Markdown 다운로드",
+                data=md_content,
+                file_name=f"신제품_아이디어_{datetime.now().strftime('%Y%m%d_%H%M')}.md",
+                mime="text/markdown"
+            )
 
-    if high_potential:
-        for p in high_potential:
-            md += f"""### {p['brand']} - {p['name']} (⭐{p['revival_potential']})
-- **카테고리**: {p.get('category', '-')}
-- **출시/단종**: {p.get('launch_year', '-')} → {p.get('discontinue_year', '-')}
-- **특이점**: {p.get('unique_features', '-')}
-- **실패 이유**: {p.get('failure_reason', '-')}
-- **현재 트렌드 적합성**: {p.get('current_trend_fit', '-')}
-
-"""
-    else:
-        md += "부활 가능성 4점 이상의 과거 제품이 없습니다.\n\n"
-
-    md += """---
-
-## 2. 신제품 아이디어 요청
-
-위 데이터를 바탕으로 다음을 고려한 신제품 아이디어를 제안해주세요:
-
-1. 부활 가능성 높은 과거 제품의 컨셉을 현대적으로 재해석
-2. 독특한 특징을 가진 제품
-
-각 아이디어에 대해 다음을 포함해주세요:
-- 제품 컨셉
-- 핵심 차별화 포인트
-- 타겟 고객
-- 예상 가격대
-"""
-
-    return md
-
-
-def find_opportunities():
-    """규칙 기반 기회 발굴"""
-    high_potential = db.get_high_potential_legacy_products(min_score=4)
-
-    opportunities = []
-
-    # 부활 가능성 높은 과거 제품
-    for l in high_potential:
-        opportunities.append({
-            'type': '부활 기회',
-            'source': f"{l['brand']} - {l['name']}",
-            'insight': l.get('unique_features', '-'),
-            'category': l.get('category', '-')
-        })
-
-    return opportunities
+        st.markdown(result)
 
 
 def main():
     st.title("💡 신제품 제안")
 
     # 통계 요약
-    stats = db.get_statistics()
-
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     with col1:
-        # 분석 완료된 올리브영 제품 수
         analyzed_count = len(db.get_analyzed_product_codes())
         st.metric("분석 완료 제품", f"{analyzed_count}개")
     with col2:
-        st.metric("과거 특이 제품", f"{stats['legacy_count']}개")
-    with col3:
-        st.metric("부활 가능성 높음", f"{stats['high_potential_count']}개")
+        proposals = db.get_proposals()
+        st.metric("저장된 제안", f"{len(proposals)}개")
 
     st.divider()
 
-    # 탭 구성 (올리브영 기반 제안을 첫 번째로)
-    tab_oliveyoung, tab_opportunity, tab_export, tab_saved = st.tabs([
-        "🛒 올리브영 기반 제안", "🎯 기회 발굴", "📤 데이터 내보내기", "💾 저장된 제안"
+    # 탭 구성
+    tab_oliveyoung, tab_saved = st.tabs([
+        "🛒 올리브영 기반 제안", "💾 저장된 제안"
     ])
 
     with tab_oliveyoung:
         render_oliveyoung_tab()
-
-    with tab_opportunity:
-        st.subheader("규칙 기반 기회 발굴")
-        st.caption("부활 가능성 높은 과거 제품에서 기회를 찾습니다.")
-
-        opportunities = find_opportunities()
-
-        if not opportunities:
-            st.info("기회를 찾으려면 먼저 과거 특이 제품 데이터를 등록해주세요.")
-        else:
-            st.markdown(f"**{len(opportunities)}개 기회 발견**")
-
-            for i, opp in enumerate(opportunities):
-                with st.expander(f"🔄 [{opp['type']}] {opp['source']}"):
-                    st.markdown(f"**카테고리:** {opp['category']}")
-                    st.markdown(f"**인사이트:**")
-                    st.write(opp['insight'])
-
-    with tab_export:
-        st.subheader("Claude용 데이터 내보내기")
-        st.caption("수집된 데이터를 마크다운 형식으로 내보내 Claude에게 신제품 아이디어를 요청하세요.")
-
-        if stats['legacy_count'] == 0:
-            st.warning("내보낼 데이터가 없습니다. 먼저 과거 특이 제품을 등록해주세요.")
-        else:
-            if st.button("📋 마크다운 생성", width='stretch'):
-                markdown_content = generate_export_markdown()
-                st.session_state['export_markdown'] = markdown_content
-
-            if 'export_markdown' in st.session_state:
-                st.text_area(
-                    "생성된 마크다운 (복사해서 Claude에게 붙여넣기)",
-                    value=st.session_state['export_markdown'],
-                    height=400
-                )
-
-                st.download_button(
-                    "📥 마크다운 파일 다운로드",
-                    data=st.session_state['export_markdown'],
-                    file_name=f"cosmetics_research_{datetime.now().strftime('%Y%m%d')}.md",
-                    mime="text/markdown"
-                )
 
     with tab_saved:
         st.subheader("저장된 신제품 제안")
