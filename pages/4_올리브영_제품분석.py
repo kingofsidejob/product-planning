@@ -234,8 +234,14 @@ def show_analysis_dialog(product_code: str, max_reviews: int = 5000):
                     })
 
             if usp_items:
+                from modules.usp_dictionary import highlight_trigger_words
                 for usp_item in usp_items:
-                    st.success(f"**[{usp_item['category']}]** {usp_item['keyword']}: \"{usp_item['context']}\"")
+                    highlighted_context = highlight_trigger_words(usp_item['context'])
+                    st.markdown(
+                        f'<div style="padding:10px;background-color:#d4edda;border-radius:5px;margin-bottom:5px">'
+                        f'<b>[{usp_item["category"]}]</b> {usp_item["keyword"]}: "{highlighted_context}"</div>',
+                        unsafe_allow_html=True
+                    )
                 st.caption("💡 리뷰에서 발견된 USP입니다. 신제품 기획 시 차별화 포인트로 참고하세요!")
 
         # 바이럴 키워드 언급 횟수 표시
@@ -264,12 +270,16 @@ def show_analysis_dialog(product_code: str, max_reviews: int = 5000):
 
     if unique_features:
         st.markdown("**━━━ 🎯 유니크 포인트 (차별화 요소) ━━━**")
+        # 트리거 키워드 하이라이트 함수 import
+        from modules.usp_dictionary import highlight_trigger_words
         # 각 항목을 expander로 표시하여 전체 내용 확인 가능
         for i, feature in enumerate(unique_features, 1):
             # 미리보기 (앞 30자)
             preview = feature[:30] + "..." if len(feature) > 30 else feature
             with st.expander(f"📌 {i}. {preview}", expanded=True):
-                st.write(feature)
+                # 트리거 키워드 하이라이트 (빨간 볼드)
+                highlighted = highlight_trigger_words(feature)
+                st.markdown(highlighted, unsafe_allow_html=True)
         st.divider()
 
     # 나머지 마케팅 제안 (유니크 포인트 섹션 제외)
@@ -1090,6 +1100,8 @@ def main():
                         st.markdown(f"**{product['brand']}** - {product['name'][:50]}{'...' if len(product['name']) > 50 else ''}")
                         analyzed_date = product['analyzed_at'][:10].replace('-', '.') if product['analyzed_at'] else '-'
                         st.caption(f"📊 리뷰 {product['total_reviews']}개 · 📅 {analyzed_date} · `{product['product_code']}`")
+                        if st.button("📊 보기", key=f"viral_view_{product['product_code']}"):
+                            show_analysis_dialog(product['product_code'])
 
                     with col_viral:
                         # 바이럴 비율 및 상세 정보

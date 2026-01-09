@@ -377,3 +377,52 @@ def get_usp_dictionary() -> UspDictionary:
             CANDIDATE_KEYWORDS_PATH
         )
     return _usp_dict_instance
+
+
+def highlight_trigger_words(text: str, color: str = "#e74c3c") -> str:
+    """
+    텍스트에서 트리거 키워드와 관련어를 하이라이트 처리
+
+    Args:
+        text: 원본 텍스트
+        color: 하이라이트 색상 (기본: 빨간색)
+
+    Returns:
+        HTML 태그가 포함된 하이라이트 텍스트
+    """
+    usp_dict = get_usp_dictionary()
+    keywords = usp_dict.get_all_trigger_keywords()
+
+    if not keywords:
+        return text
+
+    matched_spans = []  # (start, end, matched_text) 튜플 리스트
+
+    # 각 키워드에 대해 관련 단어 찾기 (키워드를 포함하는 모든 한글 단어)
+    for keyword in keywords:
+        # 키워드를 포함하는 한글 단어 패턴 (예: "향" -> "무향", "자스민향" 등)
+        pattern = rf'[가-힣]*{re.escape(keyword)}[가-힣]*'
+
+        for match in re.finditer(pattern, text):
+            matched_spans.append((match.start(), match.end(), match.group()))
+
+    if not matched_spans:
+        return text
+
+    # 중복 제거 및 겹치는 범위 병합 (긴 매치 우선)
+    matched_spans.sort(key=lambda x: (x[0], -(x[1] - x[0])))
+    merged = []
+    for span in matched_spans:
+        if not merged or span[0] >= merged[-1][1]:
+            merged.append(span)
+        elif span[1] > merged[-1][1]:
+            # 겹치지만 더 긴 경우 확장
+            merged[-1] = (merged[-1][0], span[1], text[merged[-1][0]:span[1]])
+
+    # 역순으로 교체 (인덱스 변경 방지)
+    result = text
+    for start, end, matched_text in reversed(merged):
+        highlighted_word = f'<span style="color:{color};font-weight:bold">{matched_text}</span>'
+        result = result[:start] + highlighted_word + result[end:]
+
+    return result
