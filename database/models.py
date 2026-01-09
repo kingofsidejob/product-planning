@@ -201,3 +201,36 @@ def create_tables(connection):
     """테이블 생성"""
     connection.executescript(SCHEMA_SQL)
     connection.commit()
+
+def run_migrations(connection):
+    """
+    데이터베이스 마이그레이션 실행
+    migrations 폴더의 모든 SQL 파일을 순서대로 실행
+    """
+    import os
+    
+    # migrations 디렉토리 경로
+    migrations_dir = os.path.join(os.path.dirname(__file__), 'migrations')
+    
+    # migrations 폴더가 없으면 생성
+    if not os.path.exists(migrations_dir):
+        os.makedirs(migrations_dir)
+        return
+    
+    # 모든 .sql 파일 가져오기 (알파벳 순서로 정렬)
+    migration_files = sorted([
+        f for f in os.listdir(migrations_dir)
+        if f.endswith('.sql')
+    ])
+    
+    if not migration_files:
+        return
+    
+    # 각 마이그레이션 파일 실행
+    for migration_file in migration_files:
+        migration_path = os.path.join(migrations_dir, migration_file)
+        with open(migration_path, 'r', encoding='utf-8') as f:
+            migration_sql = f.read()
+            connection.executescript(migration_sql)
+    
+    connection.commit()

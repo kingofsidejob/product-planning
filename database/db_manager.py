@@ -7,7 +7,7 @@ import os
 from contextlib import contextmanager
 from typing import List, Dict, Any, Optional
 
-from .models import create_tables
+from .models import create_tables, run_migrations
 
 
 class DatabaseManager:
@@ -26,6 +26,7 @@ class DatabaseManager:
         """데이터베이스 초기화"""
         with self.get_connection() as conn:
             create_tables(conn)
+            run_migrations(conn)
 
     @contextmanager
     def get_connection(self):
