@@ -24,7 +24,13 @@
       "Bash(set:*)",
       "Bash(git commit:*)",
       "Bash(netstat:*)",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(ollama list:*)",
+      "Bash(pkill:*)",
+      "Bash(git rm:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.google.com)",
+      "Bash(chcp 65001)"
     ]
   }
 }

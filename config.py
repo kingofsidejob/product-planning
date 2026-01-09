@@ -2,6 +2,11 @@
 화장품 신제품 개발 시장 조사 분석 도구 - 설정 파일
 """
 import os
+import json
+from dotenv import load_dotenv
+
+# .env 파일 로드
+load_dotenv()
 
 # 프로젝트 경로
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -147,3 +152,68 @@ REVIVAL_POTENTIAL_LABELS = {
     4: "높음",
     5: "매우 높음"
 }
+
+# === 네이버 검색 API 설정 ===
+NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "")
+NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")
+
+# === 과거 제품 자동 발굴 설정 ===
+DISCOVERY_MAX_PRODUCTS = 5  # 한 번에 최대 발굴 개수
+DISCOVERY_SEARCH_DELAY = 0.2  # API 호출 간 딜레이 (초) - 네이버 제한: 초당 10회
+
+# 화장품 카테고리 키워드 (검색 쿼리용)
+COSMETIC_CATEGORY_KEYWORDS = [
+    # 스킨케어
+    "스킨", "토너", "에센스", "세럼", "앰플", "크림", "로션", "미스트", "오일",
+    # 마스크/팩
+    "마스크팩", "토너패드", "페이셜팩", "코팩", "패치",
+    # 클렌징
+    "클렌징폼", "클렌징젤", "클렌징오일", "클렌징밤", "클렌징워터", "클렌징밀크", "스크럽", "아이리무버",
+    # 선케어
+    "선크림", "선스틱", "선쿠션",
+]
+
+# 검색 쿼리 패턴 (화장품 카테고리 + 단종 관련 표현)
+DISCOVERY_QUERIES = [
+    # 카테고리별 단종 검색
+    "크림 단종 아쉬워",
+    "세럼 단종 그리워",
+    "에센스 단종 다시",
+    "토너 단종 재출시",
+    "앰플 단종 아쉬워",
+    "로션 단종 그리워",
+    # 질문형 (지식인에 효과적)
+    "화장품 어디서 사요 안팔아",
+    "스킨케어 더이상 안나오나요",
+    "크림 안파나요 단종",
+    # 추억형 (블로그/카페에 효과적)
+    "예전에 썼던 크림 단종",
+    "추억의 스킨케어 다시",
+    "옛날 세럼 단종",
+]
+
+# 알려진 화장품 브랜드 목록 (JSON 파일에서 로드)
+BRANDS_JSON_PATH = os.path.join(DATA_DIR, "brands.json")
+
+def _load_brands():
+    """brands.json에서 브랜드 목록 로드"""
+    try:
+        with open(BRANDS_JSON_PATH, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            return data.get('cosmetic_brands', []), data.get('brand_aliases', {})
+    except FileNotFoundError:
+        # 파일이 없으면 기본 브랜드 목록 반환
+        return [
+            "이니스프리", "미샤", "에뛰드", "더페이스샵", "스킨푸드",
+            "네이처리퍼블릭", "토니모리", "홀리카홀리카", "잇츠스킨",
+        ], {}
+
+KNOWN_COSMETIC_BRANDS, BRAND_ALIASES = _load_brands()
+
+# 제품 유형 키워드 (제품명 추출용)
+PRODUCT_TYPE_KEYWORDS = [
+    "크림", "로션", "토너", "스킨", "세럼", "에센스", "앰플",
+    "팩", "마스크", "오일", "젤", "밤", "스틱", "쿠션",
+    "파운데이션", "립스틱", "틴트", "아이섀도우", "마스카라",
+    "선크림", "클렌저", "클렌징", "폼", "미스트", "워터",
+]

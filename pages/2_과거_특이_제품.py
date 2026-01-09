@@ -3,8 +3,12 @@
 """
 import streamlit as st
 
-from config import DB_PATH, PRODUCT_CATEGORIES, REVIVAL_POTENTIAL_LABELS
+from config import (
+    DB_PATH, PRODUCT_CATEGORIES, REVIVAL_POTENTIAL_LABELS,
+    NAVER_CLIENT_ID, NAVER_CLIENT_SECRET
+)
 from database.db_manager import DatabaseManager
+from modules.legacy_discoverer import LegacyDiscoverer
 
 st.set_page_config(page_title="과거 특이 제품", page_icon="📜", layout="wide")
 
@@ -15,132 +19,201 @@ def get_db():
 db = get_db()
 
 
-def legacy_product_form(product_data: dict = None, form_key: str = "new"):
-    """과거 특이 제품 등록/수정 폼"""
-    is_edit = product_data is not None
-    data = product_data or {}
+def render_discovery_tab():
+    """자동 발굴 탭 렌더링"""
+    st.subheader("과거 히트상품 자동 발굴")
+    st.caption("네이버 검색 API를 활용하여 단종된 화장품을 자동으로 찾습니다.")
 
-    with st.form(key=f"legacy_form_{form_key}"):
-        st.subheader("📝 기본 정보")
+    # API 키 확인
+    if not NAVER_CLIENT_ID or not NAVER_CLIENT_SECRET:
+        st.error("네이버 API 키가 설정되지 않았습니다.")
+        st.info("""
+        **설정 방법:**
+        1. [네이버 개발자 센터](https://developers.naver.com/)에서 애플리케이션 등록
+        2. 검색 API 사용 신청
+        3. 프로젝트 루트에 `.env` 파일 생성:
+        ```
+        NAVER_CLIENT_ID=your_client_id
+        NAVER_CLIENT_SECRET=your_client_secret
+        ```
+        """)
+        return
 
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            brand = st.text_input("브랜드명 *", value=data.get('brand', ''))
-        with col2:
-            name = st.text_input("제품명 *", value=data.get('name', ''))
-        with col3:
-            category = st.selectbox(
-                "카테고리 *",
-                options=PRODUCT_CATEGORIES,
-                index=PRODUCT_CATEGORIES.index(data.get('category', '스킨케어')) if data.get('category') in PRODUCT_CATEGORIES else 0
-            )
+    # 검색 설정
+    st.markdown("**검색 설정**")
+    col1, col2, col3 = st.columns(3)
 
-        col1, col2 = st.columns(2)
-        with col1:
-            launch_year = st.number_input(
-                "출시 연도",
-                value=data.get('launch_year', 2020),
-                min_value=1990,
-                max_value=2026,
-                step=1
-            )
-        with col2:
-            discontinue_year = st.number_input(
-                "단종 연도",
-                value=data.get('discontinue_year', 2022),
-                min_value=1990,
-                max_value=2026,
-                step=1
-            )
-
-        st.divider()
-
-        st.subheader("🔍 제품 분석")
-
-        unique_features = st.text_area(
-            "어떤 점이 특이했는지 *",
-            value=data.get('unique_features', ''),
-            height=100,
-            help="당시에 독특했던 제형, 디자인, 컨셉 등"
+    with col1:
+        sources = st.multiselect(
+            "검색 소스",
+            options=["blog", "cafe", "kin"],
+            default=["blog", "cafe", "kin"],
+            format_func=lambda x: {"blog": "블로그", "cafe": "카페", "kin": "지식인"}[x]
         )
 
-        failure_reason = st.text_area(
-            "실패 이유",
-            value=data.get('failure_reason', ''),
-            height=100,
-            help="시기상조, 가격, 마케팅 부족, 소비자 인식 등"
-        )
-
-        market_condition = st.text_area(
-            "당시 시장 상황",
-            value=data.get('market_condition', ''),
-            height=100,
-            help="경쟁 상황, 소비자 트렌드, 경제 상황 등"
-        )
-
-        st.divider()
-
-        st.subheader("⭐ 부활 가능성 평가")
-
-        revival_potential = st.slider(
-            "부활 가능성 점수",
+    with col2:
+        max_products = st.number_input(
+            "최대 발굴 개수",
             min_value=1,
-            max_value=5,
-            value=data.get('revival_potential', 3),
-            help="1: 매우 낮음 ~ 5: 매우 높음"
+            max_value=10,
+            value=5
         )
 
-        # 점수 설명 표시
-        st.caption(f"현재 점수: **{revival_potential}점** - {REVIVAL_POTENTIAL_LABELS[revival_potential]}")
-
-        current_trend_fit = st.text_area(
-            "현재 트렌드 적합성",
-            value=data.get('current_trend_fit', ''),
-            height=100,
-            help="현재 트렌드와 어떻게 맞는지, 왜 부활 가능성이 있는지"
+    with col3:
+        min_mentions = st.number_input(
+            "최소 언급 횟수",
+            min_value=1,
+            max_value=20,
+            value=5,
+            help="이 횟수 이상 반복 언급된 제품만 수집"
         )
 
-        notes = st.text_area("기타 메모", value=data.get('notes', ''), height=80)
+    # 발굴 시작 버튼
+    if st.button("발굴 시작", width='stretch', type="primary"):
+        if not sources:
+            st.warning("검색 소스를 하나 이상 선택해주세요.")
+            return
 
-        submitted = st.form_submit_button(
-            "💾 저장" if not is_edit else "✏️ 수정",
-            width='stretch'
-        )
+        discoverer = LegacyDiscoverer(db)
 
-        if submitted:
-            if not brand or not name or not unique_features:
-                st.error("브랜드명, 제품명, 특이점은 필수입니다.")
-                return None
+        # 진행 상황 표시
+        progress_bar = st.progress(0)
+        status_text = st.empty()
 
-            return {
-                'brand': brand,
-                'name': name,
-                'category': category,
-                'launch_year': launch_year,
-                'discontinue_year': discontinue_year,
-                'unique_features': unique_features,
-                'failure_reason': failure_reason,
-                'market_condition': market_condition,
-                'revival_potential': revival_potential,
-                'current_trend_fit': current_trend_fit,
-                'notes': notes
-            }
+        def progress_callback(message, current, total):
+            progress = current / total if total > 0 else 0
+            progress = min(progress, 1.0)  # 1.0 초과 방지
+            progress_bar.progress(progress)
+            status_text.text(message)
 
-    return None
+        # 발굴 실행
+        with st.spinner("검색 중..."):
+            results = discoverer.discover(
+                sources=sources,
+                max_products=max_products,
+                min_mentions=min_mentions,
+                callback=progress_callback
+            )
+
+        progress_bar.empty()
+        status_text.empty()
+
+        if not results:
+            st.warning("발굴된 제품이 없습니다. 다른 검색 조건을 시도해보세요.")
+        else:
+            st.success(f"{len(results)}개 제품 발굴 완료!")
+            st.session_state['discovered_products'] = results
+
+    # 발굴 결과 표시
+    if 'discovered_products' in st.session_state and st.session_state['discovered_products']:
+        st.divider()
+        st.markdown("**발굴 결과**")
+
+        results = st.session_state['discovered_products']
+
+        # 저장할 제품 선택
+        selected_products = []
+
+        for i, product in enumerate(results):
+            with st.container(border=True):
+                col1, col2 = st.columns([4, 1])
+
+                with col1:
+                    mention_count = product.get('mention_count', 1)
+                    st.markdown(f"**{i+1}. {product['brand']}** - {product['name']} ({mention_count}회 언급)")
+
+                    # 원문 한 줄 미리보기 + 링크
+                    context_preview = product.get('context', '')[:80] + '...' if product.get('context') else ''
+                    source_url = product.get('source_url', '')
+
+                    if source_url:
+                        st.caption(f"{context_preview} [원문보기]({source_url})")
+                    else:
+                        st.caption(context_preview)
+
+                with col2:
+                    if st.checkbox("저장", key=f"save_discovered_{i}", value=True):
+                        selected_products.append(product)
+
+        # 선택한 제품 저장
+        if st.button(f"선택한 제품 저장 ({len(selected_products)}개)", width='stretch'):
+            saved_count = 0
+            for product in selected_products:
+                try:
+                    db.add_discovered_product({
+                        'brand': product['brand'],
+                        'name': product['name'],
+                        'category': '미분류',
+                        'discovery_source': product.get('discovery_source'),
+                        'discovery_keyword': product.get('discovery_keyword'),
+                        'source_url': product.get('source_url'),
+                        'notes': product.get('context', '')[:500]
+                    })
+                    saved_count += 1
+                except Exception as e:
+                    # 중복 등 오류 무시
+                    pass
+
+            if saved_count > 0:
+                st.success(f"{saved_count}개 제품이 저장되었습니다!")
+                # 발굴 히스토리 기록
+                source_str = ",".join(sources)
+                db.add_discovery_history(source_str, saved_count)
+
+            # 세션에서 결과 제거
+            del st.session_state['discovered_products']
+            st.rerun()
+
+    # 발굴된 제품 목록
+    st.divider()
+    st.markdown("**저장된 발굴 제품**")
+
+    discovered = db.get_discovered_products()
+
+    if not discovered:
+        st.info("아직 발굴된 제품이 없습니다. 위에서 '발굴 시작'을 눌러주세요.")
+    else:
+        st.markdown(f"총 {len(discovered)}개 제품")
+
+        for product in discovered:
+            with st.container(border=True):
+                col1, col2 = st.columns([5, 1])
+
+                with col1:
+                    st.markdown(f"**{product['brand']}** - {product['name']}")
+                    source_label = {"blog": "블로그", "cafe": "카페", "kin": "지식인"}.get(
+                        product.get('discovery_source', ''), product.get('discovery_source', '')
+                    )
+
+                    # 메모 한 줄 + 원문 링크
+                    note_preview = product.get('notes', '')[:60] + '...' if product.get('notes') else ''
+                    source_url = product.get('source_url', '')
+
+                    if source_url:
+                        st.caption(f"{note_preview} [원문보기]({source_url})")
+                    else:
+                        st.caption(note_preview)
+
+                with col2:
+                    if st.button("삭제", key=f"del_discovered_{product['id']}"):
+                        db.delete_discovered_product(product['id'])
+                        st.rerun()
 
 
 def main():
-    st.title("📜 과거 특이 제품 분석")
+    st.title("과거 특이 제품 분석")
     st.caption("과거에 실패했지만 현재 트렌드에 부활 가능성이 있는 제품들을 조사합니다.")
 
     # 탭 구성
-    tab_list, tab_add = st.tabs(["📋 제품 목록", "➕ 제품 추가"])
+    tab_list, tab_discover = st.tabs([
+        "제품 목록", "자동 발굴"
+    ])
 
     with tab_list:
         products = db.get_legacy_products()
 
         if not products:
-            st.info("등록된 과거 특이 제품이 없습니다. '제품 추가' 탭에서 추가해주세요.")
+            st.info("등록된 과거 특이 제품이 없습니다. '자동 발굴' 탭을 이용해주세요.")
         else:
             # 필터
             col1, col2, col3 = st.columns([1, 1, 2])
@@ -170,33 +243,33 @@ def main():
             # 부활 가능성 높은 제품 하이라이트
             high_potential = [p for p in filtered if p.get('revival_potential', 0) >= 4]
             if high_potential:
-                st.success(f"🌟 부활 가능성 높은 제품 {len(high_potential)}개!")
+                st.success(f"부활 가능성 높은 제품 {len(high_potential)}개!")
 
             for product in filtered:
                 potential = product.get('revival_potential', 3)
-                stars = "⭐" * potential
+                stars = "★" * potential + "☆" * (5 - potential)
 
                 with st.expander(f"{stars} **{product['brand']}** - {product['name']} ({product['category']})"):
                     col1, col2 = st.columns([3, 1])
 
                     with col1:
-                        st.markdown(f"📅 출시: {product.get('launch_year', '-')} → 단종: {product.get('discontinue_year', '-')}")
+                        st.markdown(f"출시: {product.get('launch_year', '-')} → 단종: {product.get('discontinue_year', '-')}")
 
                         st.divider()
 
-                        st.markdown("**🔍 특이점:**")
+                        st.markdown("**특이점:**")
                         st.write(product.get('unique_features', '-'))
 
                         if product.get('failure_reason'):
-                            st.markdown("**❌ 실패 이유:**")
+                            st.markdown("**실패 이유:**")
                             st.write(product['failure_reason'])
 
                         if product.get('market_condition'):
-                            st.markdown("**📊 당시 시장 상황:**")
+                            st.markdown("**당시 시장 상황:**")
                             st.write(product['market_condition'])
 
                         if product.get('current_trend_fit'):
-                            st.markdown("**✨ 현재 트렌드 적합성:**")
+                            st.markdown("**현재 트렌드 적합성:**")
                             st.write(product['current_trend_fit'])
 
                     with col2:
@@ -206,16 +279,12 @@ def main():
                             help=REVIVAL_POTENTIAL_LABELS[potential]
                         )
 
-                        if st.button("🗑️ 삭제", key=f"del_legacy_{product['id']}"):
+                        if st.button("삭제", key=f"del_legacy_{product['id']}"):
                             db.delete_legacy_product(product['id'])
                             st.rerun()
 
-    with tab_add:
-        result = legacy_product_form()
-        if result:
-            db.add_legacy_product(result)
-            st.success("✅ 과거 특이 제품이 추가되었습니다!")
-            st.rerun()
+    with tab_discover:
+        render_discovery_tab()
 
 
 if __name__ == "__main__":

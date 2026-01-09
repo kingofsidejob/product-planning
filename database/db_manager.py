@@ -557,6 +557,18 @@ class DatabaseManager:
                 return self._parse_review_analysis_row(dict(row))
             return None
 
+    def get_review_analyses_by_codes(self, product_codes: List[str]) -> List[Dict[str, Any]]:
+        """여러 상품코드의 리뷰 분석 결과 조회"""
+        if not product_codes:
+            return []
+        with self.get_connection() as conn:
+            placeholders = ','.join(['?' for _ in product_codes])
+            cursor = conn.execute(
+                f"SELECT * FROM review_analysis WHERE product_code IN ({placeholders})",
+                product_codes
+            )
+            return [self._parse_review_analysis_row(dict(row)) for row in cursor.fetchall()]
+
     def get_analyzed_product_codes(self) -> set:
         """분석 완료된 상품 코드 목록"""
         with self.get_connection() as conn:
@@ -590,6 +602,122 @@ class DatabaseManager:
                     row[field] = json.loads(row[field])
                 except json.JSONDecodeError:
                     row[field] = [] if field != 'category_scores' and field != 'competitor_mentions' else {}
+        return row
+
+    # ==================== 발굴된 과거 제품 CRUD ====================
+
+    def add_discovered_product(self, data: Dict[str, Any]) -> int:
+        """발굴된 과거 제품 추가"""
+        with self.get_connection() as conn:
+            cursor = conn.execute("""
+                INSERT INTO discovered_hit_products (
+                    brand, name, category,
+                    discovery_source, discovery_keyword, source_url,
+                    discontinuation_status, revival_potential, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                data.get('brand'),
+                data.get('name'),
+                data.get('category', '미분류'),
+                data.get('discovery_source'),
+                data.get('discovery_keyword'),
+                data.get('source_url'),
+                data.get('discontinuation_status', 'pending'),
+                data.get('revival_potential', 3),
+                data.get('notes')
+            ))
+            return cursor.lastrowid
+
+    def get_discovered_products(self, status: str = None) -> List[Dict[str, Any]]:
+        """발굴된 과거 제품 조회"""
+        with self.get_connection() as conn:
+            if status:
+                cursor = conn.execute(
+                    """SELECT * FROM discovered_hit_products
+                    WHERE discontinuation_status = ?
+                    ORDER BY created_at DESC""",
+                    (status,)
+                )
+            else:
+                cursor = conn.execute(
+                    "SELECT * FROM discovered_hit_products ORDER BY created_at DESC"
+                )
+            return [self._parse_discovered_product_row(dict(row)) for row in cursor.fetchall()]
+
+    def get_discovered_product(self, product_id: int) -> Optional[Dict[str, Any]]:
+        """특정 발굴된 제품 조회"""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM discovered_hit_products WHERE id = ?", (product_id,)
+            )
+            row = cursor.fetchone()
+            return self._parse_discovered_product_row(dict(row)) if row else None
+
+    def get_discovered_product_by_name(self, brand: str, name: str) -> Optional[Dict[str, Any]]:
+        """브랜드+제품명으로 발굴된 제품 조회 (중복 체크용)"""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM discovered_hit_products WHERE brand = ? AND name = ?",
+                (brand, name)
+            )
+            row = cursor.fetchone()
+            return self._parse_discovered_product_row(dict(row)) if row else None
+
+    def update_discovered_product(self, product_id: int, data: Dict[str, Any]) -> bool:
+        """발굴된 제품 정보 업데이트"""
+        with self.get_connection() as conn:
+            conn.execute("""
+                UPDATE discovered_hit_products SET
+                    brand = ?, name = ?, category = ?,
+                    discontinuation_status = ?,
+                    revival_potential = ?, notes = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (
+                data.get('brand'),
+                data.get('name'),
+                data.get('category'),
+                data.get('discontinuation_status'),
+                data.get('revival_potential', 3),
+                data.get('notes'),
+                product_id
+            ))
+            return True
+
+    def delete_discovered_product(self, product_id: int) -> bool:
+        """발굴된 제품 삭제"""
+        with self.get_connection() as conn:
+            conn.execute("DELETE FROM discovered_hit_products WHERE id = ?", (product_id,))
+            return True
+
+    def add_discovery_history(self, source: str, found: int, discontinued: int = 0) -> int:
+        """발굴 히스토리 추가"""
+        with self.get_connection() as conn:
+            cursor = conn.execute("""
+                INSERT INTO discovery_history (discovery_source, products_found, discontinued_count)
+                VALUES (?, ?, ?)
+            """, (source, found, discontinued))
+            return cursor.lastrowid
+
+    def get_discovery_history(self, limit: int = 10) -> List[Dict]:
+        """발굴 히스토리 조회"""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM discovery_history ORDER BY discovered_at DESC LIMIT ?",
+                (limit,)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def _parse_discovered_product_row(self, row: Dict) -> Dict[str, Any]:
+        """발굴된 제품 JSON 필드 파싱"""
+        json_fields = ['review_samples', 'strengths', 'weaknesses',
+                       'inferred_discontinuation_reasons', 'marketing_points']
+        for field in json_fields:
+            if row.get(field):
+                try:
+                    row[field] = json.loads(row[field])
+                except json.JSONDecodeError:
+                    row[field] = []
         return row
 
     # ==================== 통계 ====================
