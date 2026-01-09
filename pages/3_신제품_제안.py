@@ -19,7 +19,6 @@ db = get_db()
 
 def generate_export_markdown():
     """Claude용 마크다운 내보내기 생성"""
-    competitors = db.get_competitor_products()
     legacy_products = db.get_legacy_products()
     high_potential = db.get_high_potential_legacy_products(min_score=4)
 
@@ -28,25 +27,7 @@ def generate_export_markdown():
 
 ---
 
-## 1. 경쟁사 제품 분석 ({len(competitors)}개)
-
-"""
-
-    if competitors:
-        for p in competitors:
-            md += f"""### {p['brand']} - {p['name']}
-- **카테고리**: {p.get('category', '-')}
-- **가격**: {f"{p['price']:,}원" if p.get('price') else '-'}
-- **장점**: {p.get('strengths', '-')}
-- **단점 (리뷰 기반)**: {p.get('weaknesses', '-')}
-
-"""
-    else:
-        md += "등록된 경쟁사 제품이 없습니다.\n\n"
-
-    md += f"""---
-
-## 2. 부활 가능성 높은 과거 제품 ({len(high_potential)}개)
+## 1. 부활 가능성 높은 과거 제품 ({len(high_potential)}개)
 
 """
 
@@ -65,13 +46,12 @@ def generate_export_markdown():
 
     md += """---
 
-## 3. 신제품 아이디어 요청
+## 2. 신제품 아이디어 요청
 
 위 데이터를 바탕으로 다음을 고려한 신제품 아이디어를 제안해주세요:
 
-1. 경쟁사 제품의 단점을 보완하는 제품
-2. 부활 가능성 높은 과거 제품의 컨셉을 현대적으로 재해석
-3. 현재 경쟁사에 없는 독특한 특징을 가진 제품
+1. 부활 가능성 높은 과거 제품의 컨셉을 현대적으로 재해석
+2. 독특한 특징을 가진 제품
 
 각 아이디어에 대해 다음을 포함해주세요:
 - 제품 컨셉
@@ -85,20 +65,9 @@ def generate_export_markdown():
 
 def find_opportunities():
     """규칙 기반 기회 발굴"""
-    competitors = db.get_competitor_products()
     high_potential = db.get_high_potential_legacy_products(min_score=4)
 
     opportunities = []
-
-    # 경쟁사 단점에서 기회 찾기
-    for c in competitors:
-        if c.get('weaknesses'):
-            opportunities.append({
-                'type': '경쟁사 약점',
-                'source': f"{c['brand']} - {c['name']}",
-                'insight': c['weaknesses'],
-                'category': c.get('category', '-')
-            })
 
     # 부활 가능성 높은 과거 제품
     for l in high_potential:
@@ -118,12 +87,10 @@ def main():
     # 통계 요약
     stats = db.get_statistics()
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     with col1:
-        st.metric("분석된 경쟁사 제품", f"{stats['competitor_count']}개")
-    with col2:
         st.metric("과거 특이 제품", f"{stats['legacy_count']}개")
-    with col3:
+    with col2:
         st.metric("부활 가능성 높음", f"{stats['high_potential_count']}개")
 
     st.divider()
@@ -135,28 +102,17 @@ def main():
 
     with tab_opportunity:
         st.subheader("규칙 기반 기회 발굴")
-        st.caption("경쟁사 약점 + 부활 가능성 높은 과거 제품에서 기회를 찾습니다.")
+        st.caption("부활 가능성 높은 과거 제품에서 기회를 찾습니다.")
 
         opportunities = find_opportunities()
 
         if not opportunities:
-            st.info("기회를 찾으려면 먼저 경쟁사 제품과 과거 특이 제품 데이터를 등록해주세요.")
+            st.info("기회를 찾으려면 먼저 과거 특이 제품 데이터를 등록해주세요.")
         else:
-            # 필터
-            filter_type = st.radio(
-                "필터",
-                options=["전체", "경쟁사 약점", "부활 기회"],
-                horizontal=True
-            )
-
-            if filter_type != "전체":
-                opportunities = [o for o in opportunities if o['type'] == filter_type]
-
             st.markdown(f"**{len(opportunities)}개 기회 발견**")
 
             for i, opp in enumerate(opportunities):
-                icon = "🎯" if opp['type'] == '경쟁사 약점' else "🔄"
-                with st.expander(f"{icon} [{opp['type']}] {opp['source']}"):
+                with st.expander(f"🔄 [{opp['type']}] {opp['source']}"):
                     st.markdown(f"**카테고리:** {opp['category']}")
                     st.markdown(f"**인사이트:**")
                     st.write(opp['insight'])
@@ -165,8 +121,8 @@ def main():
         st.subheader("Claude용 데이터 내보내기")
         st.caption("수집된 데이터를 마크다운 형식으로 내보내 Claude에게 신제품 아이디어를 요청하세요.")
 
-        if stats['competitor_count'] == 0 and stats['legacy_count'] == 0:
-            st.warning("내보낼 데이터가 없습니다. 먼저 경쟁사 제품이나 과거 특이 제품을 등록해주세요.")
+        if stats['legacy_count'] == 0:
+            st.warning("내보낼 데이터가 없습니다. 먼저 과거 특이 제품을 등록해주세요.")
         else:
             if st.button("📋 마크다운 생성", width='stretch'):
                 markdown_content = generate_export_markdown()

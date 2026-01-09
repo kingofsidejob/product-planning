@@ -28,39 +28,20 @@ def main():
     # 통계 가져오기
     stats = db.get_statistics()
 
-    # 상단 메트릭 카드 (간소화)
-    m1, m2, m3 = st.columns(3)
+    # 상단 메트릭 카드
+    m1, m2 = st.columns(2)
     with m1:
-        st.metric("경쟁사 제품", f"{stats['competitor_count']}개")
-    with m2:
         st.metric("과거 특이 제품", f"{stats['legacy_count']}개")
-    with m3:
+    with m2:
         st.metric("부활 가능성 높음", f"{stats['high_potential_count']}개")
 
     st.divider()
 
-    # 3개 섹션 가로 배치
-    col1, col2, col3 = st.columns(3)
+    # 2개 섹션 가로 배치
+    col1, col2 = st.columns(2)
 
-    # ===== 1. 경쟁사 제품 분석 =====
+    # ===== 1. 과거 특이 제품 조사 =====
     with col1:
-        st.subheader("🔍 경쟁사 제품 분석")
-        competitor_products = db.get_competitor_products()
-
-        if competitor_products:
-            for p in competitor_products:
-                with st.container(border=True):
-                    st.markdown(f"**{p['brand']}** - {p['name']}")
-                    st.caption(f"{p.get('category', '-')} · {p['price']:,}원" if p.get('price') else p.get('category', '-'))
-                    if p.get('weaknesses'):
-                        st.markdown(f"❌ {p['weaknesses'][:80]}{'...' if len(p.get('weaknesses', '')) > 80 else ''}")
-        else:
-            st.info("등록된 경쟁사 제품이 없습니다.")
-
-        st.page_link("pages/1_경쟁사_제품_분석.py", label="➕ 제품 추가하기", icon="🔗")
-
-    # ===== 2. 과거 특이 제품 조사 =====
-    with col2:
         st.subheader("📜 과거 특이 제품 조사")
         legacy_products = db.get_legacy_products()
 
@@ -77,30 +58,21 @@ def main():
 
         st.page_link("pages/2_과거_특이_제품.py", label="➕ 제품 추가하기", icon="🔗")
 
-    # ===== 3. 신제품 아이디어 제안 =====
-    with col3:
+    # ===== 2. 신제품 아이디어 제안 =====
+    with col2:
         st.subheader("💡 신제품 아이디어 제안")
 
         # 기회 발굴 요약
         high_potential = db.get_high_potential_legacy_products(min_score=4)
-        weaknesses_count = len([p for p in competitor_products if p.get('weaknesses')]) if competitor_products else 0
 
-        st.markdown(f"**발견된 기회: {weaknesses_count + len(high_potential)}개**")
-
-        if weaknesses_count > 0:
-            with st.container(border=True):
-                st.markdown("🎯 **경쟁사 약점 기반**")
-                for p in competitor_products[:3]:
-                    if p.get('weaknesses'):
-                        st.caption(f"• {p['brand']}: {p['weaknesses'][:40]}...")
+        st.markdown(f"**발견된 기회: {len(high_potential)}개**")
 
         if high_potential:
             with st.container(border=True):
                 st.markdown("🔄 **부활 가능 제품**")
                 for p in high_potential[:3]:
                     st.caption(f"• {p['brand']} {p['name']} ({'⭐' * p['revival_potential']})")
-
-        if not high_potential and weaknesses_count == 0:
+        else:
             st.info("데이터를 추가하면 기회를 발굴합니다.")
 
         st.page_link("pages/3_신제품_제안.py", label="📤 상세 보기 / 내보내기", icon="🔗")
@@ -109,13 +81,13 @@ def main():
     with st.sidebar:
         st.header("📌 사용 방법")
         st.markdown("""
-        1. **경쟁사 제품 분석**: 현재 시장의 경쟁 제품 분석
+        1. **올리브영 제품분석**: 베스트 상품 수집 및 리뷰 분석
         2. **과거 특이 제품**: 과거 실패했지만 부활 가능한 제품
         3. **신제품 제안**: 데이터 기반 아이디어 도출
 
         ---
 
-        💡 **팁**: 리뷰에서 단점을 찾아 기록하면 경쟁사의 약점을 파악할 수 있습니다.
+        💡 **팁**: 올리브영 리뷰에서 USP와 유니크 포인트를 발굴하세요.
         """)
 
 

@@ -521,21 +521,6 @@ def run_review_analysis(product_code: str, max_reviews: int = 100, save_to_db: b
         return {'success': False, 'message': str(e)}
 
 
-def add_to_competitor_analysis(product: dict):
-    """올리브영 제품을 경쟁사 분석에 추가"""
-    competitor_data = {
-        'brand': product['brand'],
-        'name': product['name'],
-        'category': product.get('category', ''),
-        'price': product.get('price'),
-        'image_url': product.get('image_url', ''),
-        'product_page_url': product.get('product_url', ''),
-        'notes': f"올리브영 베스트 {product.get('best_rank', '-')}위 (자동 추가)"
-    }
-    db.add_competitor_product(competitor_data)
-    db.mark_oliveyoung_as_added(product['id'])
-
-
 def main():
     st.title("🛒 올리브영 제품분석")
     st.caption("올리브영 베스트 상품 수집, 신규 진입 감지, 리뷰 장단점 분석")
@@ -696,8 +681,7 @@ def main():
                     '제품명': p['name'][:35] + '...' if len(p['name']) > 35 else p['name'],
                     '카테고리': p.get('category', '-'),
                     '가격': f"{p['price']:,}원" if p.get('price') else '-',
-                    '상품코드': p.get('product_code', '-'),
-                    '분석추가': '✅' if p.get('added_to_competitor') else ''
+                    '상품코드': p.get('product_code', '-')
                 }
                 for p in products[:100]
             ])
@@ -748,17 +732,9 @@ def main():
         if new_products:
             st.success(f"🎉 {len(new_products)}개의 신규 진입 제품 발견!")
 
-            if st.button("📥 전체 경쟁사 분석에 추가", type="primary"):
-                for product in new_products:
-                    add_to_competitor_analysis(product)
-                st.success(f"✅ {len(new_products)}개 제품이 경쟁사 분석에 추가되었습니다!")
-                st.rerun()
-
-            st.divider()
-
             for product in new_products:
                 with st.container(border=True):
-                    col1, col2, col3 = st.columns([3, 1, 1])
+                    col1, col2 = st.columns([3, 1])
 
                     with col1:
                         st.markdown(f"**{product['brand']}** - {product['name'][:50]}...")
@@ -769,12 +745,6 @@ def main():
                     with col2:
                         if product.get('image_url'):
                             st.image(product['image_url'], width=80)
-
-                    with col3:
-                        if st.button("➕ 추가", key=f"add_{product['id']}"):
-                            add_to_competitor_analysis(product)
-                            st.success("추가됨!")
-                            st.rerun()
         else:
             st.info("신규 진입 제품이 없습니다.")
 
