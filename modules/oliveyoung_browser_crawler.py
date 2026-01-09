@@ -26,6 +26,9 @@ try:
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
 
+# 통합 카테고리 데이터 import (Single Source of Truth)
+from config import get_category_codes
+
 
 class OliveyoungBrowserCrawler:
     """Playwright 기반 올리브영 크롤러"""
@@ -33,8 +36,8 @@ class OliveyoungBrowserCrawler:
     BASE_URL = "https://www.oliveyoung.co.kr"
     CATEGORY_URL = "https://www.oliveyoung.co.kr/store/display/getMCategoryList.do"
 
-    # 통합 카테고리 데이터 import (Single Source of Truth)
-    from config import get_category_codes
+
+    # 소분류 카테고리 코드 매핑
     CATEGORIES = get_category_codes()
 
     def __init__(self):
