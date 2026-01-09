@@ -201,7 +201,7 @@ def product_form(product_data: dict = None, form_key: str = "new"):
 
         notes = st.text_area("기타 메모", value=data.get('notes', ''), height=80)
 
-        submitted = st.form_submit_button("💾 저장" if not is_edit else "✏️ 수정", use_container_width=True)
+        submitted = st.form_submit_button("💾 저장" if not is_edit else "✏️ 수정", width='stretch')
 
         if submitted:
             if not brand or not name:
@@ -323,7 +323,7 @@ def main():
                         })
 
                 df = pd.DataFrame(compare_data)
-                st.dataframe(df, use_container_width=True, hide_index=True)
+                st.dataframe(df, width='stretch', hide_index=True)
 
 
 if __name__ == "__main__":

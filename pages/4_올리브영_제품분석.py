@@ -583,7 +583,7 @@ def main():
         col_btn1, col_btn2 = st.columns([1, 3])
 
         with col_btn1:
-            start_crawl = st.button("🚀 수집 시작", type="primary", use_container_width=True)
+            start_crawl = st.button("🚀 수집 시작", type="primary", width='stretch')
 
         with col_btn2:
             st.caption("💡 수집 시 기존 상품코드(goodsNo)와 비교하여 신규 진입 상품을 자동 감지합니다.")
@@ -631,7 +631,7 @@ def main():
                         }
                         for p in new_entries[:10]
                     ])
-                    st.dataframe(new_df, use_container_width=True, hide_index=True)
+                    st.dataframe(new_df, width='stretch', hide_index=True)
 
                     if len(new_entries) > 10:
                         st.caption(f"... 외 {len(new_entries) - 10}개 더")
@@ -691,7 +691,7 @@ def main():
                 }
                 for p in products[:100]
             ])
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(df, width='stretch', hide_index=True)
 
             if len(products) > 100:
                 st.caption(f"상위 100개만 표시 (전체 {len(products)}개)")
@@ -826,7 +826,7 @@ def main():
                         label_visibility="collapsed"
                     )
                 with col_btn:
-                    if st.button("🔍 분석", use_container_width=True, disabled=not manual_code):
+                    if st.button("🔍 분석", width='stretch', disabled=not manual_code):
                         if manual_code:
                             with st.spinner(f"'{manual_code}' 분석 중..."):
                                 result = run_review_analysis(manual_code, max_reviews)
@@ -866,7 +866,7 @@ def main():
                 col_btn1, col_btn2, col_btn3, col_btn4 = st.columns([1, 1, 1, 1])
 
                 with col_btn1:
-                    if st.button("✅ 전체 선택", use_container_width=True):
+                    if st.button("✅ 전체 선택", width='stretch'):
                         # 미분석 상품들의 코드 목록
                         unanalyzed_codes = {
                             p['product_code'] for p in review_products[:500]
@@ -879,7 +879,7 @@ def main():
                         st.rerun()
 
                 with col_btn2:
-                    if st.button("❌ 선택 해제", use_container_width=True):
+                    if st.button("❌ 선택 해제", width='stretch'):
                         # 체크박스 상태 초기화
                         for code in st.session_state.selected_products:
                             if f"check_{code}" in st.session_state:
@@ -893,7 +893,7 @@ def main():
                         f"🚀 선택한 {selected_count}개 수집",
                         type="primary",
                         disabled=selected_count == 0,
-                        use_container_width=True
+                        width='stretch'
                     ):
                         st.session_state.batch_crawling = True
                         st.rerun()
@@ -902,7 +902,7 @@ def main():
                     if st.button(
                         f"🗑️ 선택한 {selected_count}개 삭제",
                         disabled=selected_count == 0,
-                        use_container_width=True
+                        width='stretch'
                     ):
                         for product_code in st.session_state.selected_products:
                             db.delete_oliveyoung_product(product_code)
@@ -987,7 +987,7 @@ def main():
                                     st.session_state[checkbox_key] = is_selected
 
                                 # 체크박스 표시 및 상태 동기화
-                                checked = st.checkbox("", key=checkbox_key, label_visibility="collapsed")
+                                checked = st.checkbox("선택", key=checkbox_key, label_visibility="collapsed")
 
                                 # 체크박스 상태에 따라 selected_products 업데이트
                                 if checked and product_code not in st.session_state.selected_products:
@@ -1018,14 +1018,14 @@ def main():
 
                         with col_action:
                             if is_analyzed:
-                                if st.button("📊 보기", key=f"view_{product_code}", use_container_width=True):
+                                if st.button("📊 보기", key=f"view_{product_code}", width='stretch'):
                                     show_analysis_dialog(product_code, max_reviews)
-                                if st.button("🔄 재수집", key=f"recrawl_{product_code}", use_container_width=True):
+                                if st.button("🔄 재수집", key=f"recrawl_{product_code}", width='stretch'):
                                     with st.spinner(f"'{product['name'][:20]}...' 재수집 중..."):
                                         run_review_analysis(product_code, max_reviews)
                                     st.rerun()
                             else:
-                                if st.button("🔍 수집", key=f"crawl_{product_code}", use_container_width=True):
+                                if st.button("🔍 수집", key=f"crawl_{product_code}", width='stretch'):
                                     with st.spinner(f"'{product['name'][:20]}...' 분석 중..."):
                                         run_review_analysis(product_code, max_reviews)
                                     st.rerun()
@@ -1120,7 +1120,7 @@ def main():
                 }
                 for h in history
             ])
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(df, width='stretch', hide_index=True)
 
             st.divider()
             col1, col2, col3 = st.columns(3)

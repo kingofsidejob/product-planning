@@ -168,7 +168,7 @@ def main():
         if stats['competitor_count'] == 0 and stats['legacy_count'] == 0:
             st.warning("내보낼 데이터가 없습니다. 먼저 경쟁사 제품이나 과거 특이 제품을 등록해주세요.")
         else:
-            if st.button("📋 마크다운 생성", use_container_width=True):
+            if st.button("📋 마크다운 생성", width='stretch'):
                 markdown_content = generate_export_markdown()
                 st.session_state['export_markdown'] = markdown_content
 
@@ -198,7 +198,7 @@ def main():
                 features = st.text_area("핵심 특징 (줄바꿈으로 구분)", height=100)
                 notes = st.text_area("메모", height=80)
 
-                if st.form_submit_button("💾 저장", use_container_width=True):
+                if st.form_submit_button("💾 저장", width='stretch'):
                     if not title:
                         st.error("제목은 필수입니다.")
                     else:

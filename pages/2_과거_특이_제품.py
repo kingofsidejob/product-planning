@@ -104,7 +104,7 @@ def legacy_product_form(product_data: dict = None, form_key: str = "new"):
 
         submitted = st.form_submit_button(
             "💾 저장" if not is_edit else "✏️ 수정",
-            use_container_width=True
+            width='stretch'
         )
 
         if submitted:
