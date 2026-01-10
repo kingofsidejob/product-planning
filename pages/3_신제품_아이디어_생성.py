@@ -1,5 +1,5 @@
 """
-신제품 제안 페이지
+신제품 아이디어 생성 페이지
 """
 import streamlit as st
 import pandas as pd
@@ -185,7 +185,7 @@ def _call_openai_api(prompt: str, model_id: str) -> str:
     except Exception as e:
         return f"❌ OpenAI API 오류: {str(e)}"
 
-st.set_page_config(page_title="신제품 제안", page_icon="💡", layout="wide")
+st.set_page_config(page_title="신제품 아이디어 생성", page_icon="💡", layout="wide")
 
 @st.cache_resource
 def get_db():
@@ -412,7 +412,7 @@ def generate_oliveyoung_prompt(analyses: list) -> str:
 
 ## 출력 형식
 응답은 반드시 다음 제목으로 시작해주세요:
-# 🧴 신제품 아이디어 제안서
+# 🧴 신제품 아이디어 생성
 """
 
     return md
@@ -560,7 +560,7 @@ def render_oliveyoung_tab():
                 st.caption(f"💾 저장됨: {st.session_state['last_saved_title']}")
         with col_download:
             # Markdown 파일 생성
-            md_content = f"""# 신제품 아이디어 제안서
+            md_content = f"""# 신제품 아이디어
 > 생성일: {datetime.now().strftime('%Y-%m-%d %H:%M')}
 
 ---
@@ -578,7 +578,7 @@ def render_oliveyoung_tab():
 
 
 def main():
-    st.title("💡 신제품 제안")
+    st.title("💡 신제품 아이디어 생성")
 
     # 통계 요약
     col1, col2 = st.columns(2)
@@ -593,14 +593,14 @@ def main():
 
     # 탭 구성
     tab_oliveyoung, tab_saved = st.tabs([
-        "🛒 올리브영 기반 제안", "💾 저장된 제안"
+        "🛒 경쟁사 분석 기반", "💾 저장된 아이디어"
     ])
 
     with tab_oliveyoung:
         render_oliveyoung_tab()
 
     with tab_saved:
-        st.subheader("저장된 신제품 제안")
+        st.subheader("저장된 신제품 아이디어")
 
         # 새 제안 추가 폼
         with st.expander("➕ 새 제안 추가"):

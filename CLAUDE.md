@@ -1,4 +1,4 @@
-# CLAUDE.md
+2# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -37,8 +37,9 @@ streamlit run app.py
 ## 주요 기능
 
 1. **경쟁사 제품 분석** - 상세페이지/블로그에서 장점, 리뷰에서 단점 수집
-2. **과거 특이 제품 분석** - 실패 제품 중 부활 가능성 평가 (1-5점)
-3. **신제품 제안** - 수집 데이터 요약 + 규칙 기반 매칭 + 마크다운 내보내기
+2. **신제품 아이디어 생성** - 수집 데이터 요약 + 규칙 기반 매칭 + 마크다운 내보내기
+
+<!-- 비활성화됨: 과거 특이 제품 분석 - 실패 제품 중 부활 가능성 평가 (1-5점) -->
 
 ## 참고
 

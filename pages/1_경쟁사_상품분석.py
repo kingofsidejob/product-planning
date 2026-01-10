@@ -36,7 +36,7 @@ try:
 except ImportError:
     ANALYZER_AVAILABLE = False
 
-st.set_page_config(page_title="올리브영 제품분석", page_icon="🛒", layout="wide")
+st.set_page_config(page_title="경쟁사 상품분석", page_icon="🛒", layout="wide")
 
 
 @st.cache_resource
@@ -73,6 +73,10 @@ from config import get_category_groups, get_all_category_names
 
 CATEGORY_GROUPS = get_category_groups()
 CATEGORIES = get_all_category_names()
+
+# 페이지당 표시 개수 옵션
+PAGE_SIZE_OPTIONS = [50, 100, 200, 500]
+DEFAULT_PAGE_SIZE = 100
 
 
 @st.dialog("📊 리뷰 분석 리포트", width="large")
@@ -522,7 +526,7 @@ def run_review_analysis(product_code: str, max_reviews: int = 100, save_to_db: b
 
 
 def main():
-    st.title("🛒 올리브영 제품분석")
+    st.title("🛒 경쟁사 상품분석")
     st.caption("올리브영 베스트 상품 수집, 신규 진입 감지, 리뷰 장단점 분석")
 
     # Playwright 설치 확인
@@ -761,6 +765,19 @@ def main():
                 st.session_state.selected_products = set()
             if 'batch_crawling' not in st.session_state:
                 st.session_state.batch_crawling = False
+            if 'review_page_number' not in st.session_state:
+                st.session_state.review_page_number = 1
+            if 'review_filter_status' not in st.session_state:
+                st.session_state.review_filter_status = "전체"
+            if 'review_page_size' not in st.session_state:
+                st.session_state.review_page_size = DEFAULT_PAGE_SIZE
+            if 'batch_crawling_all' not in st.session_state:
+                st.session_state.batch_crawling_all = False
+            # 바이럴 탭 페이지네이션
+            if 'viral_page_number' not in st.session_state:
+                st.session_state.viral_page_number = 1
+            if 'viral_page_size' not in st.session_state:
+                st.session_state.viral_page_size = DEFAULT_PAGE_SIZE
 
             # 설정
             col_group, col_category, col_setting = st.columns([1, 1, 1])
@@ -790,10 +807,24 @@ def main():
                     "리뷰 수집 개수",
                     min_value=10,
                     max_value=50000,
-                    value=500,
+                    value=5000,
                     step=100,
-                    help="상품당 수집할 최대 리뷰 개수 (기본 500개)"
+                    help="상품당 수집할 최대 리뷰 개수 (기본 5000개)"
                 )
+
+            # 페이지 크기 설정
+            col_pagesize = st.columns([1])[0]
+            with col_pagesize:
+                page_size = st.selectbox(
+                    "페이지당 제품 수",
+                    options=PAGE_SIZE_OPTIONS,
+                    index=PAGE_SIZE_OPTIONS.index(st.session_state.review_page_size),
+                    help="한 페이지에 표시할 제품 개수"
+                )
+                if page_size != st.session_state.review_page_size:
+                    st.session_state.review_page_size = page_size
+                    st.session_state.review_page_number = 1
+                    st.rerun()
 
             # 수동 상품코드 입력
             with st.expander("📝 상품코드 직접 입력하여 분석"):
@@ -818,42 +849,115 @@ def main():
 
             st.divider()
 
-            # 수집된 상품 목록 - 대분류/소분류 필터 적용
-            if review_filter_category != "전체":
-                # 소분류가 선택된 경우
-                review_products = db.get_oliveyoung_products(category=review_filter_category)
-            elif review_filter_group != "전체":
-                # 대분류만 선택된 경우 - 해당 대분류의 모든 소분류 상품 조회
-                group_categories = CATEGORY_GROUPS[review_filter_group]
-                all_products = db.get_oliveyoung_products(category=None)
-                review_products = [p for p in all_products if p.get('category') in group_categories]
-            else:
-                # 전체 선택
-                review_products = db.get_oliveyoung_products(category=None)
+            # 상태 필터 버튼
+            col_f1, col_f2, col_f3 = st.columns(3)
+            with col_f1:
+                if st.button(
+                    "📋 전체 보기" if st.session_state.review_filter_status == "전체" else "전체",
+                    type="primary" if st.session_state.review_filter_status == "전체" else "secondary",
+                    width='stretch'
+                ):
+                    st.session_state.review_filter_status = "전체"
+                    st.session_state.review_page_number = 1
+                    st.rerun()
 
-            # 분석 완료된 상품 정보 캐싱 조회 (페이지 로딩 속도 3-5배 향상)
+            with col_f2:
+                if st.button(
+                    "⏳ 미수집만" if st.session_state.review_filter_status == "미수집만" else "미수집만",
+                    type="primary" if st.session_state.review_filter_status == "미수집만" else "secondary",
+                    width='stretch'
+                ):
+                    st.session_state.review_filter_status = "미수집만"
+                    st.session_state.review_page_number = 1
+                    st.rerun()
+
+            with col_f3:
+                if st.button(
+                    "✅ 수집완료만" if st.session_state.review_filter_status == "수집완료만" else "수집완료만",
+                    type="primary" if st.session_state.review_filter_status == "수집완료만" else "secondary",
+                    width='stretch'
+                ):
+                    st.session_state.review_filter_status = "수집완료만"
+                    st.session_state.review_page_number = 1
+                    st.rerun()
+
+            st.divider()
+
+            # 카테고리 결정
+            target_category = None
+            if review_filter_category != "전체":
+                target_category = review_filter_category
+
+            # 검색어 (상품 목록 위쪽의 검색창에서 입력)
+            search_query = st.session_state.get('product_search', '')
+
+            # DB에서 페이지네이션된 결과 가져오기
+            result = db.get_oliveyoung_products_paginated(
+                category=target_category,
+                filter_status=st.session_state.review_filter_status,
+                search_query=search_query if search_query else None,
+                limit=st.session_state.review_page_size,
+                offset=(st.session_state.review_page_number - 1) * st.session_state.review_page_size
+            )
+
+            products = result['products']
+            total_count = result['total_count']
+            total_pages = result['page_count']
+
+            # 분석 완료된 상품 정보 캐싱 조회 (기존 유지)
             analyzed_info = get_analyzed_product_info_cached()
             analyzed_codes = analyzed_info['codes']
             analyzed_dates = analyzed_info['dates']
             analyzed_review_counts = analyzed_info['counts']
 
-            if review_products:
-                analyzed_count = sum(1 for p in review_products if p.get('product_code') in analyzed_codes)
-                st.markdown(f"**총 {len(review_products)}개 상품** (분석완료: {analyzed_count}개)")
-
+            if products:
+                st.markdown(f"**총 {total_count}개 상품** (페이지 {st.session_state.review_page_number}/{total_pages})")
                 st.divider()
 
+                # 페이지네이션 컨트롤
+                if total_pages > 1:
+                    col_prev, col_info, col_jump, col_next = st.columns([1, 2, 1.5, 1])
+
+                    with col_prev:
+                        if st.button("⬅️ 이전", disabled=st.session_state.review_page_number <= 1, width='stretch'):
+                            st.session_state.review_page_number -= 1
+                            st.rerun()
+
+                    with col_info:
+                        st.markdown(f"**페이지 {st.session_state.review_page_number} / {total_pages}**")
+
+                    with col_jump:
+                        new_page = st.number_input(
+                            "페이지 이동",
+                            min_value=1,
+                            max_value=total_pages,
+                            value=st.session_state.review_page_number,
+                            step=1,
+                            label_visibility="collapsed",
+                            key="page_jump_input"
+                        )
+                        if new_page != st.session_state.review_page_number:
+                            st.session_state.review_page_number = new_page
+                            st.rerun()
+
+                    with col_next:
+                        if st.button("다음 ➡️", disabled=st.session_state.review_page_number >= total_pages, width='stretch'):
+                            st.session_state.review_page_number += 1
+                            st.rerun()
+
+                    st.divider()
+
                 # 일괄 수집/삭제 버튼
-                col_btn1, col_btn2, col_btn3, col_btn4 = st.columns([1, 1, 1, 1])
+                col_btn1, col_btn2, col_btn3, col_btn_all, col_btn_copy, col_btn4 = st.columns([1, 1, 1, 1.3, 1, 1])
 
                 with col_btn1:
                     if st.button("✅ 전체 선택", width='stretch'):
-                        # 미분석 상품들의 코드 목록
+                        # products는 이미 현재 페이지 제품만 포함 (DB에서 LIMIT/OFFSET 적용됨)
                         unanalyzed_codes = {
-                            p['product_code'] for p in review_products[:500]
-                            if p.get('product_code') and p['product_code'] not in analyzed_codes
+                            p['product_code'] for p in products
+                            if p.get('product_code') and p.get('is_analyzed') == 0
                         }
-                        st.session_state.selected_products = unanalyzed_codes
+                        st.session_state.selected_products.update(unanalyzed_codes)
                         # 체크박스 상태도 동기화
                         for code in unanalyzed_codes:
                             st.session_state[f"check_{code}"] = True
@@ -879,6 +983,52 @@ def main():
                         st.session_state.batch_crawling = True
                         st.rerun()
 
+                with col_btn_all:
+                    # 필터 상태에 따라 대상 결정
+                    if st.session_state.review_filter_status == "수집완료만":
+                        # 수집완료된 제품 코드 조회 (재수집용)
+                        target_codes = db.get_analyzed_product_codes(
+                            category=target_category,
+                            search_query=search_query if search_query else None
+                        )
+                        btn_label = f"🔄 전체 {len(target_codes)}개 재수집"
+                        btn_help = "현재 필터 조건의 모든 수집완료 제품 재수집"
+                    else:
+                        # 미수집 제품 코드 조회
+                        target_codes = db.get_unanalyzed_product_codes(
+                            category=target_category,
+                            search_query=search_query if search_query else None
+                        )
+                        btn_label = f"🚀 전체 {len(target_codes)}개 일괄수집"
+                        btn_help = "현재 필터 조건의 모든 미수집 제품 일괄 수집"
+
+                    if st.button(
+                        btn_label,
+                        type="secondary",
+                        disabled=len(target_codes) == 0,
+                        width='stretch',
+                        help=btn_help
+                    ):
+                        st.session_state.batch_crawling_all = True
+                        st.session_state.batch_crawling_codes = target_codes
+                        st.rerun()
+
+                with col_btn_copy:
+                    # 현재 페이지의 제품 코드만 가져오기
+                    copy_codes = [p['product_code'] for p in products if p.get('product_code')]
+
+                    if st.button(
+                        f"📋 {len(copy_codes)}개 코드 복사",
+                        width='stretch',
+                        help="현재 페이지 제품의 goodsNo를 복사합니다",
+                        disabled=len(copy_codes) == 0,
+                        key="review_copy_btn"
+                    ):
+                        # 줄바꿈으로 구분된 텍스트 생성
+                        codes_text = '\n'.join(copy_codes)
+                        st.session_state.copied_codes = codes_text
+                        st.toast(f"✅ {len(copy_codes)}개 제품 코드가 준비되었습니다!")
+
                 with col_btn4:
                     if st.button(
                         f"🗑️ 선택한 {selected_count}개 삭제",
@@ -890,6 +1040,23 @@ def main():
                         st.session_state.selected_products = set()
                         st.success(f"✅ {selected_count}개 상품이 삭제되었습니다.")
                         st.rerun()
+
+                # 복사 다이얼로그
+                if 'copied_codes' in st.session_state and st.session_state.copied_codes:
+                    with st.expander("📋 복사된 제품 코드", expanded=True):
+                        st.text_area(
+                            "GoodsNo 목록 (Ctrl+A → Ctrl+C로 복사)",
+                            value=st.session_state.copied_codes,
+                            height=200,
+                            key="codes_textarea"
+                        )
+                        col_close, col_count = st.columns([3, 1])
+                        with col_close:
+                            if st.button("닫기", width='stretch', key="review_close_codes"):
+                                del st.session_state.copied_codes
+                                st.rerun()
+                        with col_count:
+                            st.caption(f"총 {len(st.session_state.copied_codes.split())}개")
 
                 # 일괄 수집 실행
                 if st.session_state.batch_crawling and st.session_state.selected_products:
@@ -925,6 +1092,42 @@ def main():
                     st.success(f"✅ 일괄 수집 완료! 성공: {success_count}개, 실패: {fail_count}개")
                     st.rerun()
 
+                # 전체 일괄 수집 실행
+                if st.session_state.batch_crawling_all:
+                    st.divider()
+                    st.markdown("### 🚀 전체 일괄 수집 진행 중...")
+
+                    products_to_crawl = st.session_state.batch_crawling_codes
+                    total = len(products_to_crawl)
+                    st.info(f"📊 총 {total}개 제품을 순차적으로 수집합니다.")
+
+                    progress_bar = st.progress(0)
+                    status_container = st.empty()
+
+                    success_count = 0
+                    fail_count = 0
+
+                    for i, product_code in enumerate(products_to_crawl):
+                        status_container.markdown(f"**[{i+1}/{total}]** `{product_code}` 분석 중...")
+
+                        try:
+                            result = run_review_analysis(product_code, max_reviews)
+                            if result.get('success'):
+                                success_count += 1
+                            else:
+                                fail_count += 1
+                        except Exception as e:
+                            fail_count += 1
+                            st.warning(f"`{product_code}` 실패: {e}")
+
+                        progress_bar.progress((i + 1) / total)
+
+                    st.session_state.batch_crawling_all = False
+                    st.session_state.batch_crawling_codes = []
+                    status_container.empty()
+                    st.success(f"✅ 전체 일괄 수집 완료! 성공: {success_count}개, 실패: {fail_count}개")
+                    st.rerun()
+
                 st.divider()
 
                 # 상품 목록 (체크박스 포함)
@@ -932,29 +1135,18 @@ def main():
                 with col_title:
                     st.markdown("### 📋 상품 목록")
                 with col_search:
-                    search_query = st.text_input(
+                    # 검색창 (입력 시 st.rerun() 호출하여 DB 쿼리 재실행)
+                    search_query_new = st.text_input(
                         "🔍 상품 검색",
                         placeholder="브랜드명 또는 상품명 검색...",
                         label_visibility="collapsed",
                         key="product_search"
                     )
 
-                # 검색어로 필터링
-                filtered_products = review_products
-                if search_query:
-                    search_terms = search_query.strip().lower().split()
-                    filtered_products = [
-                        p for p in review_products
-                        if all(
-                            term in p.get('name', '').lower() or term in p.get('brand', '').lower()
-                            for term in search_terms
-                        )
-                    ]
-                    st.caption(f"🔎 '{search_query}' 검색 결과: {len(filtered_products)}개")
-
-                for product in filtered_products[:500]:
+                # products는 이미 현재 페이지의 제품만 포함 (DB에서 필터링됨)
+                for product in products:
                     product_code = product.get('product_code', '')
-                    is_analyzed = product_code in analyzed_codes
+                    is_analyzed = product.get('is_analyzed', 0) == 1
                     is_selected = product_code in st.session_state.selected_products
 
                     with st.container(border=True):
@@ -1011,8 +1203,6 @@ def main():
                                         run_review_analysis(product_code, max_reviews)
                                     st.rerun()
 
-                if len(review_products) > 100:
-                    st.caption(f"상위 100개만 표시 (전체 {len(review_products)}개)")
             else:
                 st.info("수집된 제품이 없습니다. '데이터 수집' 탭에서 먼저 상품을 수집하세요.")
 
@@ -1021,16 +1211,88 @@ def main():
         st.subheader("🔥 바이럴 아이템 랭킹")
         st.caption("SNS/바이럴 채널에서 언급된 제품을 바이럴 비율(%) 순으로 정렬합니다.")
 
+        # 카테고리 필터 및 검색
+        col_group_v, col_category_v, col_search_v = st.columns([1, 1, 1.5])
+
+        with col_group_v:
+            viral_filter_group = st.selectbox(
+                "대분류",
+                options=["전체"] + list(CATEGORY_GROUPS.keys()),
+                key="viral_filter_group"
+            )
+
+        with col_category_v:
+            if viral_filter_group == "전체":
+                category_options_v = ["전체"] + CATEGORIES
+            else:
+                category_options_v = ["전체"] + CATEGORY_GROUPS[viral_filter_group]
+
+            viral_filter_category = st.selectbox(
+                "소분류",
+                options=category_options_v,
+                key="viral_filter_category"
+            )
+
+        with col_search_v:
+            viral_search_query = st.text_input(
+                "🔍 브랜드/상품명 검색",
+                placeholder="브랜드명 또는 상품명 검색...",
+                label_visibility="visible",
+                key="viral_search",
+                help="검색어를 입력하면 즉시 필터링됩니다"
+            )
+
+        # 페이지 크기 설정
+        col_pagesize_v = st.columns([3, 1])[1]
+        with col_pagesize_v:
+            viral_page_size = st.selectbox(
+                "페이지당 제품 수",
+                options=PAGE_SIZE_OPTIONS,
+                index=PAGE_SIZE_OPTIONS.index(st.session_state.viral_page_size),
+                help="한 페이지에 표시할 제품 개수",
+                key="viral_page_size_select"
+            )
+            if viral_page_size != st.session_state.viral_page_size:
+                st.session_state.viral_page_size = viral_page_size
+                st.session_state.viral_page_number = 1
+                st.rerun()
+
+        st.divider()
+
         # DB에서 바이럴 키워드 카운트가 있는 제품 조회
         viral_products = []
         try:
             import json as json_lib
+
+            # 카테고리 및 검색 조건 설정
+            target_category_v = None if viral_filter_category == "전체" else viral_filter_category
+
+            # SQL 쿼리 및 파라미터 구성
+            query = """
+                SELECT r.product_code, r.brand, r.name, r.total_reviews,
+                       r.viral_keyword_counts, r.analyzed_at, p.category
+                FROM review_analysis r
+                LEFT JOIN oliveyoung_products p ON r.product_code = p.product_code
+                WHERE r.viral_keyword_counts IS NOT NULL
+                  AND r.viral_keyword_counts != '{}'
+                  AND r.viral_keyword_counts != 'null'
+            """
+            params = []
+
+            # 카테고리 필터
+            if target_category_v:
+                query += " AND p.category = ?"
+                params.append(target_category_v)
+
+            # 검색 필터
+            if viral_search_query:
+                search_terms = viral_search_query.strip().lower().split()
+                for term in search_terms:
+                    query += " AND (LOWER(r.name) LIKE ? OR LOWER(r.brand) LIKE ?)"
+                    params.extend([f"%{term}%", f"%{term}%"])
+
             with db.get_connection() as conn:
-                cursor = conn.execute("""
-                    SELECT product_code, brand, name, total_reviews, viral_keyword_counts, analyzed_at
-                    FROM review_analysis
-                    WHERE viral_keyword_counts IS NOT NULL AND viral_keyword_counts != '{}' AND viral_keyword_counts != 'null'
-                """)
+                cursor = conn.execute(query, params)
                 for row in cursor.fetchall():
                     try:
                         counts = json_lib.loads(row['viral_keyword_counts']) if row['viral_keyword_counts'] else {}
@@ -1056,11 +1318,85 @@ def main():
         # 바이럴 비율(%)로 정렬 (높은 순)
         viral_products.sort(key=lambda x: x['viral_ratio'], reverse=True)
 
-        if viral_products:
-            st.success(f"🎯 바이럴 언급이 있는 제품: **{len(viral_products)}개**")
+        # 페이지네이션 적용
+        total_viral = len(viral_products)
+        start_idx = (st.session_state.viral_page_number - 1) * st.session_state.viral_page_size
+        end_idx = start_idx + st.session_state.viral_page_size
+        viral_products_page = viral_products[start_idx:end_idx]
+        total_pages_viral = (total_viral + st.session_state.viral_page_size - 1) // st.session_state.viral_page_size
 
-            # 상위 100개만 표시
-            for rank, product in enumerate(viral_products[:100], 1):
+        if viral_products:
+            col_info, col_copy = st.columns([3, 1])
+
+            with col_info:
+                st.success(f"🎯 바이럴 언급이 있는 제품: **{total_viral}개** (페이지 {st.session_state.viral_page_number}/{total_pages_viral})")
+
+            with col_copy:
+                # 현재 페이지 제품 코드 개수
+                page_viral_count = len(viral_products_page)
+
+                if st.button(
+                    f"📋 {page_viral_count}개 코드 복사",
+                    width='stretch',
+                    help="현재 페이지 제품의 goodsNo를 복사합니다",
+                    key="viral_copy_btn"
+                ):
+                    codes_text = '\n'.join([p['product_code'] for p in viral_products_page])
+                    st.session_state.viral_copied_codes = codes_text
+                    st.toast(f"✅ {page_viral_count}개 제품 코드가 준비되었습니다!")
+
+            # 복사 다이얼로그
+            if 'viral_copied_codes' in st.session_state and st.session_state.viral_copied_codes:
+                with st.expander("📋 복사된 제품 코드", expanded=True):
+                    st.text_area(
+                        "GoodsNo 목록 (Ctrl+A → Ctrl+C로 복사)",
+                        value=st.session_state.viral_copied_codes,
+                        height=200,
+                        key="viral_codes_textarea"
+                    )
+                    col_close, col_count = st.columns([3, 1])
+                    with col_close:
+                        if st.button("닫기", key="viral_close", width='stretch'):
+                            del st.session_state.viral_copied_codes
+                            st.rerun()
+                    with col_count:
+                        st.caption(f"총 {len(st.session_state.viral_copied_codes.split())}개")
+
+            # 페이지네이션 컨트롤
+            if total_pages_viral > 1:
+                col_prev, col_info_p, col_jump, col_next = st.columns([1, 2, 1.5, 1])
+
+                with col_prev:
+                    if st.button("⬅️ 이전", key="viral_prev", disabled=st.session_state.viral_page_number <= 1, width='stretch'):
+                        st.session_state.viral_page_number -= 1
+                        st.rerun()
+
+                with col_info_p:
+                    st.markdown(f"**페이지 {st.session_state.viral_page_number} / {total_pages_viral}**")
+
+                with col_jump:
+                    new_page = st.number_input(
+                        "페이지 이동",
+                        min_value=1,
+                        max_value=total_pages_viral,
+                        value=st.session_state.viral_page_number,
+                        step=1,
+                        label_visibility="collapsed",
+                        key="viral_page_jump"
+                    )
+                    if new_page != st.session_state.viral_page_number:
+                        st.session_state.viral_page_number = new_page
+                        st.rerun()
+
+                with col_next:
+                    if st.button("다음 ➡️", key="viral_next", disabled=st.session_state.viral_page_number >= total_pages_viral, width='stretch'):
+                        st.session_state.viral_page_number += 1
+                        st.rerun()
+
+                st.divider()
+
+            # 제품 목록 표시 (페이지네이션된 데이터)
+            for rank, product in enumerate(viral_products_page, start=start_idx + 1):
                 with st.container(border=True):
                     col_rank, col_info, col_viral = st.columns([0.5, 3, 2])
 
@@ -1079,8 +1415,6 @@ def main():
                         counts_str = ', '.join([f"**{kw}** {cnt}회" for kw, cnt in sorted(product['viral_counts'].items(), key=lambda x: -x[1])])
                         st.info(f"📢 총 **{product['total_viral']}회** 언급 (**{product['viral_ratio']:.1f}%**)\n\n리뷰 {product['total_reviews']:,}개 중 {product['total_viral']}개\n\n{counts_str}")
 
-            if len(viral_products) > 100:
-                st.caption(f"상위 100개만 표시 (전체 {len(viral_products)}개)")
         else:
             st.info("바이럴 언급이 있는 제품이 없습니다. 리뷰 분석 탭에서 제품을 수집/재수집하세요.")
 

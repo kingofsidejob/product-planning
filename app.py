@@ -2,6 +2,8 @@
 화장품 신제품 개발 시장 조사 분석 도구 - 메인 대시보드
 """
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
+from PIL import Image
 
 from config import DB_PATH
 from database.db_manager import DatabaseManager
@@ -23,67 +25,79 @@ db = get_db()
 
 
 def main():
-    st.title("💄 화장품 신제품 개발 시장 조사")
+    st.title("💄 SKINNERD 신제품 개발 솔루션")
 
-    # 통계 가져오기
-    stats = db.get_statistics()
-
-    # 상단 메트릭 카드
-    m1, m2 = st.columns(2)
-    with m1:
-        st.metric("과거 특이 제품", f"{stats['legacy_count']}개")
-    with m2:
-        st.metric("부활 가능성 높음", f"{stats['high_potential_count']}개")
-
+    # ===== 회사 사진 자동 재생 캐러셀 =====
     st.divider()
 
-    # 2개 섹션 가로 배치
-    col1, col2 = st.columns(2)
+    # 자동 새로고침 (3초마다)
+    count = st_autorefresh(interval=3000, key="image_refresh")
 
-    # ===== 1. 과거 특이 제품 조사 =====
-    with col1:
-        st.subheader("📜 과거 특이 제품 조사")
-        legacy_products = db.get_legacy_products()
+    # 이미지 경로 설정
+    IMAGE_FOLDER = "상품개발홈페이지용사진"
+    IMAGE_COUNT = 9
 
-        if legacy_products:
-            for p in legacy_products:
-                with st.container(border=True):
-                    stars = "⭐" * p.get('revival_potential', 0)
-                    st.markdown(f"**{p['brand']}** - {p['name']} {stars}")
-                    st.caption(f"{p.get('launch_year', '-')} → {p.get('discontinue_year', '-')} 단종")
-                    if p.get('unique_features'):
-                        st.markdown(f"✨ {p['unique_features'][:60]}{'...' if len(p.get('unique_features', '')) > 60 else ''}")
-        else:
-            st.info("등록된 과거 제품이 없습니다.")
+    # 세션 스테이트 초기화
+    if 'current_image_index' not in st.session_state:
+        st.session_state.current_image_index = 0
+        st.session_state.last_refresh_count = 0
 
-        st.page_link("pages/2_과거_특이_제품.py", label="➕ 제품 추가하기", icon="🔗")
+    # 자동 전환 (새로고침될 때마다 인덱스 증가)
+    if count != st.session_state.last_refresh_count:
+        st.session_state.current_image_index = (st.session_state.current_image_index + 1) % IMAGE_COUNT
+        st.session_state.last_refresh_count = count
 
-    # ===== 2. 신제품 아이디어 제안 =====
-    with col2:
-        st.subheader("💡 신제품 아이디어 제안")
+    # 현재 인덱스 계산
+    current_idx = st.session_state.current_image_index
 
-        # 기회 발굴 요약
-        high_potential = db.get_high_potential_legacy_products(min_score=4)
+    # 슬라이드쇼: 중앙에 1개 이미지만 표시
+    current_image_path = f"{IMAGE_FOLDER}/{current_idx + 1}.jpg"
+    try:
+        img = Image.open(current_image_path)
+        st.image(img, width='stretch')
+    except FileNotFoundError:
+        st.error(f"이미지를 찾을 수 없습니다: {current_image_path}")
 
-        st.markdown(f"**발견된 기회: {len(high_potential)}개**")
+    # 페이지 인디케이터 (중앙 정렬)
+    st.markdown(
+        f"<p style='text-align: center; color: gray; font-size: 14px;'>{current_idx + 1} / {IMAGE_COUNT}</p>",
+        unsafe_allow_html=True
+    )
 
-        if high_potential:
-            with st.container(border=True):
-                st.markdown("🔄 **부활 가능 제품**")
-                for p in high_potential[:3]:
-                    st.caption(f"• {p['brand']} {p['name']} ({'⭐' * p['revival_potential']})")
-        else:
-            st.info("데이터를 추가하면 기회를 발굴합니다.")
+    # CSS로 이미지 스타일링 (Fade 애니메이션)
+    st.markdown(
+        """
+        <style>
+        /* 이미지 스타일 */
+        img {
+            width: 100%;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            animation: fadeIn 0.8s ease-in-out;
+        }
 
-        st.page_link("pages/3_신제품_제안.py", label="📤 상세 보기 / 내보내기", icon="🔗")
+        /* Fade In 애니메이션 정의 */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.divider()
 
     # 사이드바 안내
     with st.sidebar:
         st.header("📌 사용 방법")
         st.markdown("""
-        1. **올리브영 제품분석**: 베스트 상품 수집 및 리뷰 분석
-        2. **과거 특이 제품**: 과거 실패했지만 부활 가능한 제품
-        3. **신제품 제안**: 데이터 기반 아이디어 도출
+        1. **경쟁사 상품분석**: 베스트 상품 수집 및 리뷰 분석
+        2. **신제품 아이디어 생성**: 데이터 기반 아이디어 도출
 
         ---
 
