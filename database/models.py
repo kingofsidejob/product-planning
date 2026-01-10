@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS legacy_products (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 신제품 제안 테이블
+-- 신제품 아이디어 테이블
 CREATE TABLE IF NOT EXISTS product_proposals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS product_proposals (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 올리브영 베스트 상품 테이블 (크롤링 데이터)
+-- 경쟁사 베스트 상품 테이블 (크롤링 데이터)
 CREATE TABLE IF NOT EXISTS oliveyoung_products (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     product_code TEXT UNIQUE,

@@ -220,7 +220,7 @@ PRODUCT_TYPE_KEYWORDS = [
 
 # === 올리브영 카테고리 통합 데이터 (Single Source of Truth) ===
 # 이 데이터는 다음 3곳에서 사용되던 중복을 통합한 것입니다:
-# 1. pages/1_올리브영_제품분석.py - CATEGORY_GROUPS (UI용 대분류->소분류)
+# 1. pages/1_경쟁사_상품분석.py - CATEGORY_GROUPS (UI용 대분류->소분류)
 # 2. modules/oliveyoung_browser_crawler.py - CATEGORIES (크롤러용 소분류->코드)
 # 3. config.py - COSMETIC_CATEGORY_KEYWORDS (검색용)
 

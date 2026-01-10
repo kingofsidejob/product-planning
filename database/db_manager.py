@@ -274,10 +274,10 @@ class DatabaseManager:
             )
             return [dict(row) for row in cursor.fetchall()]
 
-    # ==================== 신제품 제안 CRUD ====================
+    # ==================== 신제품 아이디어 CRUD ====================
 
     def add_proposal(self, data: Dict[str, Any]) -> int:
-        """신제품 제안 추가"""
+        """신제품 아이디어 추가"""
         with self.get_connection() as conn:
             cursor = conn.execute("""
                 INSERT INTO product_proposals (
@@ -296,7 +296,7 @@ class DatabaseManager:
             return cursor.lastrowid
 
     def get_proposals(self) -> List[Dict[str, Any]]:
-        """모든 신제품 제안 조회"""
+        """모든 신제품 아이디어 조회"""
         with self.get_connection() as conn:
             cursor = conn.execute(
                 "SELECT * FROM product_proposals ORDER BY created_at DESC"
@@ -304,7 +304,7 @@ class DatabaseManager:
             return [self._parse_proposal_row(dict(row)) for row in cursor.fetchall()]
 
     def get_proposal(self, proposal_id: int) -> Optional[Dict[str, Any]]:
-        """특정 신제품 제안 조회"""
+        """특정 신제품 아이디어 조회"""
         with self.get_connection() as conn:
             cursor = conn.execute(
                 "SELECT * FROM product_proposals WHERE id = ?", (proposal_id,)
@@ -313,17 +313,17 @@ class DatabaseManager:
             return self._parse_proposal_row(dict(row)) if row else None
 
     def delete_proposal(self, proposal_id: int) -> bool:
-        """신제품 제안 삭제"""
+        """신제품 아이디어 삭제"""
         with self.get_connection() as conn:
             conn.execute("DELETE FROM product_proposals WHERE id = ?", (proposal_id,))
             return True
 
     def _parse_proposal_row(self, row: Dict) -> Dict[str, Any]:
-        """신제품 제안 JSON 필드 파싱"""
+        """신제품 아이디어 JSON 필드 파싱"""
         list_fields = ['key_features', 'reference_competitor_ids', 'reference_legacy_ids']
         return self._parse_json_fields(row, list_fields=list_fields)
 
-    # ==================== 올리브영 제품 CRUD ====================
+    # ==================== 경쟁사 제품 CRUD ====================
 
     def upsert_oliveyoung_product(self, data: Dict[str, Any]) -> tuple:
         """
@@ -407,6 +407,174 @@ class DatabaseManager:
 
             cursor = conn.execute(query, params)
             return [dict(row) for row in cursor.fetchall()]
+
+    def get_oliveyoung_products_paginated(
+        self,
+        category: str = None,
+        filter_status: str = "전체",  # "전체", "미수집만", "수집완료만"
+        search_query: str = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> Dict[str, Any]:
+        """
+        올리브영 제품 조회 (페이지네이션 + 필터링)
+
+        Returns:
+            {
+                'products': List[Dict],  # 제품 목록
+                'total_count': int,      # 총 제품 개수 (필터 적용 후)
+                'page_count': int        # 총 페이지 수
+            }
+        """
+        with self.get_connection() as conn:
+            base_query = """
+                SELECT p.*,
+                       CASE WHEN r.product_code IS NOT NULL THEN 1 ELSE 0 END as is_analyzed
+                FROM oliveyoung_products p
+                LEFT JOIN review_analysis r ON p.product_code = r.product_code
+                WHERE 1=1
+            """
+            params = []
+
+            # 카테고리 필터
+            if category:
+                base_query += " AND p.category = ?"
+                params.append(category)
+
+            # 분석 상태 필터
+            if filter_status == "미수집만":
+                base_query += " AND r.product_code IS NULL"
+            elif filter_status == "수집완료만":
+                base_query += " AND r.product_code IS NOT NULL"
+
+            # 검색 필터
+            if search_query:
+                search_terms = search_query.strip().lower().split()
+                for term in search_terms:
+                    base_query += " AND (LOWER(p.name) LIKE ? OR LOWER(p.brand) LIKE ?)"
+                    params.extend([f"%{term}%", f"%{term}%"])
+
+            # 총 개수 조회
+            count_query = f"SELECT COUNT(*) as total FROM ({base_query}) as filtered"
+            cursor = conn.execute(count_query, params)
+            total_count = cursor.fetchone()['total']
+
+            # 페이지네이션 적용
+            data_query = base_query + " ORDER BY p.best_rank ASC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+
+            cursor = conn.execute(data_query, params)
+            products = [dict(row) for row in cursor.fetchall()]
+
+            page_count = (total_count + limit - 1) // limit if limit > 0 else 1
+
+            return {
+                'products': products,
+                'total_count': total_count,
+                'page_count': page_count
+            }
+
+    def get_unanalyzed_product_codes(
+        self,
+        category: str = None,
+        search_query: str = None
+    ) -> List[str]:
+        """
+        미수집 제품 코드 목록 조회 (일괄 수집용)
+        """
+        with self.get_connection() as conn:
+            query = """
+                SELECT p.product_code
+                FROM oliveyoung_products p
+                LEFT JOIN review_analysis r ON p.product_code = r.product_code
+                WHERE r.product_code IS NULL
+            """
+            params = []
+
+            if category:
+                query += " AND p.category = ?"
+                params.append(category)
+
+            if search_query:
+                search_terms = search_query.strip().lower().split()
+                for term in search_terms:
+                    query += " AND (LOWER(p.name) LIKE ? OR LOWER(p.brand) LIKE ?)"
+                    params.extend([f"%{term}%", f"%{term}%"])
+
+            query += " ORDER BY p.best_rank ASC"
+
+            cursor = conn.execute(query, params)
+            return [row['product_code'] for row in cursor.fetchall()]
+
+    def get_analyzed_product_codes(
+        self,
+        category: str = None,
+        search_query: str = None
+    ) -> List[str]:
+        """
+        수집완료 제품 코드 목록 조회 (일괄 재수집용)
+        """
+        with self.get_connection() as conn:
+            query = """
+                SELECT p.product_code
+                FROM oliveyoung_products p
+                INNER JOIN review_analysis r ON p.product_code = r.product_code
+                WHERE 1=1
+            """
+            params = []
+
+            if category:
+                query += " AND p.category = ?"
+                params.append(category)
+
+            if search_query:
+                search_terms = search_query.strip().lower().split()
+                for term in search_terms:
+                    query += " AND (LOWER(p.name) LIKE ? OR LOWER(p.brand) LIKE ?)"
+                    params.extend([f"%{term}%", f"%{term}%"])
+
+            query += " ORDER BY p.best_rank ASC"
+
+            cursor = conn.execute(query, params)
+            return [row['product_code'] for row in cursor.fetchall()]
+
+    def get_all_product_codes_filtered(
+        self,
+        category: str = None,
+        search_query: str = None
+    ) -> List[str]:
+        """
+        전체 제품 코드 목록 조회 (필터링 적용, 분석 여부 무관)
+
+        Args:
+            category: 카테고리 필터
+            search_query: 검색어
+
+        Returns:
+            제품 코드 리스트
+        """
+        with self.get_connection() as conn:
+            query = """
+                SELECT product_code
+                FROM oliveyoung_products
+                WHERE 1=1
+            """
+            params = []
+
+            if category:
+                query += " AND category = ?"
+                params.append(category)
+
+            if search_query:
+                search_terms = search_query.strip().lower().split()
+                for term in search_terms:
+                    query += " AND (LOWER(name) LIKE ? OR LOWER(brand) LIKE ?)"
+                    params.extend([f"%{term}%", f"%{term}%"])
+
+            query += " ORDER BY best_rank ASC"
+
+            cursor = conn.execute(query, params)
+            return [row['product_code'] for row in cursor.fetchall()]
 
     def delete_oliveyoung_product(self, product_code: str) -> bool:
         """올리브영 제품 삭제 (관련 리뷰 분석도 함께 삭제)"""
@@ -592,12 +760,6 @@ class DatabaseManager:
                 product_codes
             )
             return [self._parse_review_analysis_row(dict(row)) for row in cursor.fetchall()]
-
-    def get_analyzed_product_codes(self) -> set:
-        """분석 완료된 상품 코드 목록"""
-        with self.get_connection() as conn:
-            cursor = conn.execute("SELECT product_code FROM review_analysis")
-            return {row['product_code'] for row in cursor.fetchall()}
 
     def get_analyzed_product_dates(self) -> Dict[str, str]:
         """분석 완료된 상품 코드와 분석 날짜 딕셔너리"""
