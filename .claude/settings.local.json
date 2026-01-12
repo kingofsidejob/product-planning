@@ -31,7 +31,14 @@
       "WebSearch",
       "WebFetch(domain:docs.google.com)",
       "Bash(chcp 65001)",
-      "Bash(\"C:/Users/kkm85/workspaces/skinnerd-projects/product-planning/database/models.py\" <<'EOFILE'\n\ndef run_migrations\\(connection\\):\n    \"\"\"\n    데이터베이스 마이그레이션 실행\n    migrations 폴더의 모든 SQL 파일을 순서대로 실행\n    \"\"\"\n    import os\n    \n    # migrations 디렉토리 경로\n    migrations_dir = os.path.join\\(os.path.dirname\\(__file__\\), 'migrations'\\)\n    \n    # migrations 폴더가 없으면 생성\n    if not os.path.exists\\(migrations_dir\\):\n        os.makedirs\\(migrations_dir\\)\n        return\n    \n    # 모든 .sql 파일 가져오기 \\(알파벳 순서로 정렬\\)\n    migration_files = sorted\\([\n        f for f in os.listdir\\(migrations_dir\\)\n        if f.endswith\\('.sql'\\)\n    ]\\)\n    \n    if not migration_files:\n        return\n    \n    # 각 마이그레이션 파일 실행\n    for migration_file in migration_files:\n        migration_path = os.path.join\\(migrations_dir, migration_file\\)\n        with open\\(migration_path, 'r', encoding='utf-8'\\) as f:\n            migration_sql = f.read\\(\\)\n            connection.executescript\\(migration_sql\\)\n    \n    connection.commit\\(\\)\nEOFILE)"
+      "Bash(\"C:/Users/kkm85/workspaces/skinnerd-projects/product-planning/database/models.py\" <<'EOFILE'\n\ndef run_migrations\\(connection\\):\n    \"\"\"\n    데이터베이스 마이그레이션 실행\n    migrations 폴더의 모든 SQL 파일을 순서대로 실행\n    \"\"\"\n    import os\n    \n    # migrations 디렉토리 경로\n    migrations_dir = os.path.join\\(os.path.dirname\\(__file__\\), 'migrations'\\)\n    \n    # migrations 폴더가 없으면 생성\n    if not os.path.exists\\(migrations_dir\\):\n        os.makedirs\\(migrations_dir\\)\n        return\n    \n    # 모든 .sql 파일 가져오기 \\(알파벳 순서로 정렬\\)\n    migration_files = sorted\\([\n        f for f in os.listdir\\(migrations_dir\\)\n        if f.endswith\\('.sql'\\)\n    ]\\)\n    \n    if not migration_files:\n        return\n    \n    # 각 마이그레이션 파일 실행\n    for migration_file in migration_files:\n        migration_path = os.path.join\\(migrations_dir, migration_file\\)\n        with open\\(migration_path, 'r', encoding='utf-8'\\) as f:\n            migration_sql = f.read\\(\\)\n            connection.executescript\\(migration_sql\\)\n    \n    connection.commit\\(\\)\nEOFILE)",
+      "Bash(git push:*)",
+      "Bash(git branch:*)",
+      "Bash(git mv:*)",
+      "Bash(dir:*)",
+      "Bash(move \"cleanser report by mikael.md\" \"reports\\\\deepresearch\"\")",
+      "Bash(move \"cleanser report by mikael.md\" reportsdeepresearch)",
+      "Bash(curl:*)"
     ]
   }
 }
